@@ -1,15 +1,34 @@
 #include "RAM.h"
 
 #include <array>
+#include <algorithm>
 #include <cmath>
 #include <numbers>
 #include <string>
 
 namespace
 {
-constexpr sf::Vector2f kSize{960.0f, 220.0f};
 constexpr float kCornerRadius = 18.0f;
-constexpr int kCornerPointCount = 8;
+constexpr int kCornerPointCount = 16;
+constexpr sf::Vector2f kSlotSize{CacheLine::kWidth, CacheLine::kHeight};
+constexpr float kColumnGap = 20.0f;
+constexpr float kRowGap = 110.0f;
+constexpr float kHorizontalPadding = 24.0f;
+constexpr float kTopPadding = 18.0f;
+constexpr float kBottomPadding = 24.0f;
+constexpr float kSlotsTopOffset = 74.0f;
+constexpr float kMinimumWidth = 320.0f;
+constexpr std::size_t kMaxColumns = 8;
+
+std::size_t ceilDiv(std::size_t value, std::size_t divisor)
+{
+    if (divisor == 0)
+    {
+        return 0;
+    }
+
+    return (value + divisor - 1) / divisor;
+}
 
 void buildRoundedRect(sf::ConvexShape& shape, sf::Vector2f size, float radius)
 {
@@ -46,15 +65,36 @@ void buildRoundedRect(sf::ConvexShape& shape, sf::Vector2f size, float radius)
         }
     }
 }
+
+sf::Vector2f computeRamSize(std::size_t slotCount)
+{
+    if (slotCount == 0)
+    {
+        return {kMinimumWidth, kSlotsTopOffset + kBottomPadding};
+    }
+
+    const std::size_t columns = std::min(slotCount, kMaxColumns);
+    const std::size_t rows = ceilDiv(slotCount, columns);
+
+    const float slotsWidth =
+        static_cast<float>(columns) * kSlotSize.x +
+        static_cast<float>(columns - 1) * kColumnGap;
+
+    const float slotsHeight =
+        static_cast<float>(rows) * kSlotSize.y +
+        static_cast<float>(rows - 1) * kRowGap;
+
+    return {
+        std::max(kMinimumWidth, slotsWidth + kHorizontalPadding * 2.0f),
+        kSlotsTopOffset + slotsHeight + kBottomPadding
+    };
+}
 }
 
 RAM::RAM(std::size_t sizeInBytes, const sf::Font* font) : m_font(font), m_sizeInBytes(sizeInBytes)
 {
-    buildRoundedRect(m_container, kSize, kCornerRadius);
-    m_container.setFillColor(sf::Color(36, 44, 60));
-    m_container.setOutlineThickness(3.0f);
-    m_container.setOutlineColor(sf::Color(88, 112, 150));
-
+    m_slotCount = ceilDiv(m_sizeInBytes, kCacheLineSizeInBytes);
+    rebuildGeometry();
     rebuildText();
     layout();
 }
@@ -68,8 +108,31 @@ void RAM::setPosition(sf::Vector2f position)
 void RAM::setFont(const sf::Font* font)
 {
     m_font = font;
+
+    for (CacheLine& line : m_lines)
+    {
+        line.setFont(font);
+    }
+
     rebuildText();
     layout();
+}
+
+void RAM::rebuildGeometry()
+{
+    m_size = computeRamSize(m_slotCount);
+
+    buildRoundedRect(m_container, m_size, kCornerRadius);
+    m_container.setFillColor(sf::Color(36, 44, 60));
+    m_container.setOutlineThickness(3.0f);
+    m_container.setOutlineColor(sf::Color(88, 112, 150));
+
+    m_lines.clear();
+    m_lines.reserve(m_slotCount);
+    for (std::size_t index = 0; index < m_slotCount; ++index)
+    {
+        m_lines.emplace_back(m_font);
+    }
 }
 
 void RAM::rebuildText()
@@ -81,7 +144,7 @@ void RAM::rebuildText()
         return;
     }
 
-    m_titleText.emplace(*m_font, "RAM " + std::to_string(m_sizeInBytes) + " B", 34);
+    m_titleText.emplace(*m_font, "RAM " + std::to_string(m_sizeInBytes) + " B", 30);
     m_titleText->setFillColor(sf::Color::White);
 }
 
@@ -89,21 +152,42 @@ void RAM::layout()
 {
     m_container.setPosition(m_position);
 
-    if (!m_titleText)
+    if (m_titleText)
+    {
+        m_titleText->setPosition(m_position + sf::Vector2f(kHorizontalPadding, kTopPadding));
+    }
+
+    if (m_lines.empty())
     {
         return;
     }
 
-    const sf::FloatRect bounds = m_titleText->getLocalBounds();
-    m_titleText->setPosition({
-        m_position.x + (kSize.x - bounds.size.x) * 0.5f - bounds.position.x,
-        m_position.y + (kSize.y - bounds.size.y) * 0.5f - bounds.position.y
-    });
+    const std::size_t columns = std::min(m_slotCount, kMaxColumns);
+    for (std::size_t index = 0; index < m_lines.size(); ++index)
+    {
+        const std::size_t row = index / columns;
+        const std::size_t column = index % columns;
+
+        const float x =
+            m_position.x + kHorizontalPadding +
+            static_cast<float>(column) * (kSlotSize.x + kColumnGap);
+
+        const float y =
+            m_position.y + kSlotsTopOffset +
+            static_cast<float>(row) * (kSlotSize.y + kRowGap);
+
+        m_lines[index].setPosition({x, y});
+    }
 }
 
 void RAM::draw(sf::RenderTarget& target, sf::RenderStates states) const
 {
     target.draw(m_container, states);
+
+    for (const CacheLine& line : m_lines)
+    {
+        target.draw(line, states);
+    }
 
     if (m_titleText)
     {

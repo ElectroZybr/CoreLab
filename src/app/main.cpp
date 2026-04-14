@@ -16,10 +16,15 @@ const sf::Color kBackgroundColor(8, 10, 18);
 
 int main()
 {
+    sf::ContextSettings contextSettings;
+    contextSettings.antiAliasingLevel = 8;
+
     sf::RenderWindow window(
         sf::VideoMode({kWindowWidth, kWindowHeight}),
         "CoreLab - CPU Visualizer Prototype",
-        sf::Style::Titlebar | sf::Style::Close
+        sf::Style::Titlebar | sf::Style::Close,
+        sf::State::Windowed,
+        contextSettings
     );
     window.setVerticalSyncEnabled(true);
 
@@ -29,7 +34,7 @@ int main()
 
     Scene scene;
     RAM ram(4096, scene.getFont());
-    ram.setPosition({-480.0f, 180.0f});
+    ram.setPosition({-1560.0f, 60.0f});
 
     sf::Clock frameClock;
 

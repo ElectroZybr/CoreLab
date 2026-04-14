@@ -6,9 +6,14 @@
 
 namespace
 {
-constexpr sf::Vector2f kSize{752.0f, 82.0f};
 constexpr float kCornerRadius = 16.0f;
-constexpr int kCornerPointCount = 8;
+constexpr int kCornerPointCount = 16;
+constexpr float kDividerWidth = 2.0f;
+constexpr unsigned int kCellTextSize = 24;
+
+constexpr std::array<const char*, CacheLine::kFloatCount> kDefaultLabels{
+    "x", "y", "z", "vx", "vy", "vz", "...", "..."
+};
 
 void buildRoundedRect(sf::ConvexShape& shape, sf::Vector2f size, float radius)
 {
@@ -49,10 +54,16 @@ void buildRoundedRect(sf::ConvexShape& shape, sf::Vector2f size, float radius)
 
 CacheLine::CacheLine(const sf::Font* font) : m_font(font)
 {
-    buildRoundedRect(m_container, kSize, kCornerRadius);
+    buildRoundedRect(m_container, {kWidth, kHeight}, kCornerRadius);
     m_container.setFillColor(sf::Color(200, 210, 223));
     m_container.setOutlineThickness(3.0f);
     m_container.setOutlineColor(sf::Color(70, 97, 138));
+
+    for (sf::RectangleShape& divider : m_dividers)
+    {
+        divider.setSize({kDividerWidth, kHeight});
+        divider.setFillColor(sf::Color(70, 97, 138));
+    }
 
     rebuildText();
     layout();
@@ -73,39 +84,64 @@ void CacheLine::setFont(const sf::Font* font)
 
 void CacheLine::rebuildText()
 {
-    m_titleText.reset();
+    for (std::optional<sf::Text>& cellText : m_cellTexts)
+    {
+        cellText.reset();
+    }
 
     if (!m_font)
     {
         return;
     }
 
-    m_titleText.emplace(*m_font, "Cache line", 32);
-    m_titleText->setFillColor(sf::Color(27, 40, 67));
+    for (std::size_t index = 0; index < m_cellTexts.size(); ++index)
+    {
+        m_cellTexts[index].emplace(*m_font, kDefaultLabels[index], kCellTextSize);
+        m_cellTexts[index]->setFillColor(sf::Color(27, 40, 67));
+    }
 }
 
 void CacheLine::layout()
 {
     m_container.setPosition(m_position);
 
-    if (!m_titleText)
+    const float floatWidth = kWidth / static_cast<float>(kFloatCount);
+    for (std::size_t index = 0; index < m_dividers.size(); ++index)
     {
-        return;
+        const float x = m_position.x + static_cast<float>(index + 1) * floatWidth - kDividerWidth * 0.5f;
+        m_dividers[index].setPosition({x, m_position.y});
     }
 
-    const sf::FloatRect bounds = m_titleText->getLocalBounds();
-    m_titleText->setPosition({
-        m_position.x + (kSize.x - bounds.size.x) * 0.5f - bounds.position.x,
-        m_position.y + (kSize.y - bounds.size.y) * 0.5f - bounds.position.y
-    });
+    for (std::size_t index = 0; index < m_cellTexts.size(); ++index)
+    {
+        if (!m_cellTexts[index])
+        {
+            continue;
+        }
+
+        const sf::FloatRect bounds = m_cellTexts[index]->getLocalBounds();
+        const float cellX = m_position.x + static_cast<float>(index) * floatWidth;
+        m_cellTexts[index]->setPosition({
+            cellX + (floatWidth - bounds.size.x) * 0.5f - bounds.position.x,
+            m_position.y + (kHeight - bounds.size.y) * 0.5f - bounds.position.y
+        });
+    }
 }
 
 void CacheLine::draw(sf::RenderTarget& target, sf::RenderStates states) const
 {
     target.draw(m_container, states);
 
-    if (m_titleText)
+    for (const sf::RectangleShape& divider : m_dividers)
     {
-        target.draw(*m_titleText, states);
+        target.draw(divider, states);
+    }
+
+    for (const std::optional<sf::Text>& cellText : m_cellTexts)
+    {
+        if (cellText)
+        {
+            target.draw(*cellText, states);
+        }
     }
 }
