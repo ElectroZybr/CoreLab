@@ -4,36 +4,24 @@
 
 #include "objects/CacheLine.h"
 
-class MemoryReadAnimation : public sf::Drawable
-{
-public:
+class MemoryReadAnimation : public sf::Drawable {
+  public:
     explicit MemoryReadAnimation(const sf::Font* font = nullptr);
 
     void setFont(const sf::Font* font);
-    void setRoute(
-        sf::Vector2f sourcePosition,
-        sf::Vector2f lanePosition,
-        sf::Vector2f turnEntryPosition,
-        sf::Vector2f turnCenter,
-        float turnRadius,
-        sf::Vector2f turnExitPosition,
-        sf::Vector2f exitPosition,
-        sf::Vector2f targetPosition
-    );
+    void setRoute(sf::Vector2f sourcePosition,
+                  sf::Vector2f lanePosition,
+                  sf::Vector2f turnEntryPosition,
+                  sf::Vector2f turnCenter,
+                  float turnRadius,
+                  sf::Vector2f turnExitPosition,
+                  sf::Vector2f exitPosition,
+                  sf::Vector2f targetPosition);
     void update(float deltaSeconds);
     [[nodiscard]] bool consumeCycleCompleted();
 
-private:
-    enum class Phase
-    {
-        Pause,
-        Exit,
-        ToTurnEntry,
-        Turn,
-        ToExit,
-        Travel,
-        Hold
-    };
+  private:
+    enum class Phase { Pause, Exit, ToTurnEntry, Turn, ToExit, Travel, Hold };
 
     [[nodiscard]] static sf::Vector2f lerp(sf::Vector2f from, sf::Vector2f to, float t);
     [[nodiscard]] static float easeInOut(float t);

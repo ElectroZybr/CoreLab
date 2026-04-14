@@ -4,11 +4,9 @@
 
 #include "objects/CacheLine.h"
 
-namespace view
-{
-class CacheLineView : public sf::Drawable
-{
-public:
+namespace view {
+class CacheLineView : public sf::Drawable {
+  public:
     static constexpr float kWidth = CacheLine::kWidth;
     static constexpr float kHeight = CacheLine::kHeight;
 
@@ -20,9 +18,9 @@ public:
 
     void setFont(const sf::Font* font);
 
-private:
+  private:
     void draw(sf::RenderTarget& target, sf::RenderStates states) const override;
 
     CacheLine m_cacheLine;
 };
-}
+} // namespace view

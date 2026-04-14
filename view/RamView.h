@@ -6,11 +6,9 @@
 
 #include "objects/RAM.h"
 
-namespace view
-{
-class RamView : public sf::Drawable
-{
-public:
+namespace view {
+class RamView : public sf::Drawable {
+  public:
     static constexpr std::size_t kCacheLineSizeInBytes = RAM::kCacheLineSizeInBytes;
     using ReadPath = RAM::ReadPath;
 
@@ -25,9 +23,9 @@ public:
 
     void setFont(const sf::Font* font);
 
-private:
+  private:
     void draw(sf::RenderTarget& target, sf::RenderStates states) const override;
 
     RAM m_ram;
 };
-}
+} // namespace view

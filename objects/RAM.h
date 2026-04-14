@@ -8,13 +8,11 @@
 #include <optional>
 #include <vector>
 
-class RAM : public sf::Drawable
-{
-public:
+class RAM : public sf::Drawable {
+  public:
     static constexpr std::size_t kCacheLineSizeInBytes = 64;
 
-    struct ReadPath
-    {
+    struct ReadPath {
         sf::Vector2f sourcePosition;
         sf::Vector2f lanePosition;
         sf::Vector2f turnEntryPosition;
@@ -27,15 +25,21 @@ public:
     explicit RAM(std::size_t sizeInBytes, const sf::Font* font = nullptr);
 
     void setPosition(sf::Vector2f position);
-    [[nodiscard]] sf::Vector2f getPosition() const { return m_position; }
+    [[nodiscard]] sf::Vector2f getPosition() const {
+        return m_position;
+    }
     [[nodiscard]] sf::Vector2f getLinePosition(std::size_t index) const;
     [[nodiscard]] ReadPath getReadPath(std::size_t index) const;
-    [[nodiscard]] std::size_t getSizeInBytes() const { return m_sizeInBytes; }
-    [[nodiscard]] std::size_t getSlotCount() const { return m_slotCount; }
+    [[nodiscard]] std::size_t getSizeInBytes() const {
+        return m_sizeInBytes;
+    }
+    [[nodiscard]] std::size_t getSlotCount() const {
+        return m_slotCount;
+    }
 
     void setFont(const sf::Font* font);
 
-private:
+  private:
     void rebuildGeometry();
     void rebuildText();
     void layout();
