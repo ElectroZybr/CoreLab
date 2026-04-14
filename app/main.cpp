@@ -5,8 +5,8 @@
 #include "animation/MemoryReadAnimation.h"
 #include "core/Camera.h"
 #include "input/Controls.h"
-#include "objects/RAM.h"
 #include "scene/Scene.h"
+#include "view/RamView.h"
 
 namespace
 {
@@ -38,14 +38,14 @@ int main()
     camera.reset(kInitialCameraPosition, kInitialZoom);
 
     Scene scene;
-    RAM ram(4096, scene.getFont());
+    view::RamView ram(4096, scene.getFont());
     ram.setPosition({-2392.0f, 60.0f});
     MemoryReadAnimation readAnimation(scene.getFont());
     std::size_t animatedBlockIndex = 0;
 
     const auto applyAnimatedBlockRoute = [&]()
     {
-        const RAM::ReadPath readPath = ram.getReadPath(kAnimatedBlocks[animatedBlockIndex]);
+        const view::RamView::ReadPath readPath = ram.getReadPath(kAnimatedBlocks[animatedBlockIndex]);
         readAnimation.setRoute(
             readPath.sourcePosition,
             readPath.lanePosition,

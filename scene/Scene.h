@@ -2,21 +2,15 @@
 
 #include <SFML/Graphics.hpp>
 
-#include "objects/CacheLine.h"
+#include "view/CacheView.h"
 
 class Scene : public sf::Drawable
 {
 public:
     Scene();
     [[nodiscard]] const sf::Font* getFont() const { return m_hasFont ? &m_font : nullptr; }
-    [[nodiscard]] sf::Vector2f getCacheLinePosition() const { return m_cacheLine.getPosition(); }
-    [[nodiscard]] sf::Vector2f getCacheLineEntryPosition() const
-    {
-        return {
-            m_cacheLine.getPosition().x - CacheLine::kWidth,
-            m_cacheLine.getPosition().y
-        };
-    }
+    [[nodiscard]] sf::Vector2f getCacheLinePosition() const { return m_cacheView.getLinePosition(); }
+    [[nodiscard]] sf::Vector2f getCacheLineEntryPosition() const { return m_cacheView.getEntryPosition(); }
 
 private:
     void buildGrid();
@@ -25,5 +19,5 @@ private:
     sf::VertexArray m_grid;
     sf::Font m_font;
     bool m_hasFont = false;
-    CacheLine m_cacheLine;
+    view::CacheView m_cacheView;
 };
