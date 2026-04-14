@@ -35,9 +35,17 @@ set(SFML_INSTALL_PKGCONFIG_FILES OFF CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(sfml)
 
 add_executable(CoreLab
-    src/Camera.cpp
-    src/CacheLine.cpp
-    src/main.cpp
+    src/app/main.cpp
+    src/core/Camera.cpp
+    src/input/Controls.cpp
+    src/scene/Scene.cpp
+    src/objects/CacheLine.cpp
+    src/objects/RAM.cpp
+)
+
+target_include_directories(CoreLab
+    PRIVATE
+        src
 )
 
 target_link_libraries(CoreLab
