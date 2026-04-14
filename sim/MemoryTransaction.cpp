@@ -77,6 +77,10 @@ float MemoryTransaction::getPhaseProgress(Tick tick) const {
     return 1.0f;
 }
 
+void MemoryTransaction::markInstalledInCache() {
+    m_installedInCache = true;
+}
+
 Tick MemoryTransaction::getElapsedTicks(Tick tick) const {
     if (tick <= m_startTick) {
         return 0;

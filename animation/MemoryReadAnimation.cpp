@@ -5,21 +5,11 @@
 #include <numbers>
 
 namespace {
-constexpr float kPauseDuration = 0.9f;
-constexpr float kExitDuration = 0.28f;
-constexpr float kTravelDuration = 0.15f;
-constexpr float kHoldDuration = 0.55f;
-constexpr float kInternalRouteSpeed = 5000.0f;
-constexpr float kMinimumPhaseDuration = 0.001f;
 constexpr float kTurnStartAngle = std::numbers::pi_v<float> * 0.5f;
 constexpr float kTurnEndAngle = std::numbers::pi_v<float>;
 
 float length(sf::Vector2f vector) {
     return std::sqrt(vector.x * vector.x + vector.y * vector.y);
-}
-
-float durationForDistance(float distance, float speed) {
-    return std::max(distance / speed, kMinimumPhaseDuration);
 }
 } // namespace
 
@@ -47,106 +37,42 @@ void MemoryReadAnimation::setRoute(sf::Vector2f sourcePosition,
     m_turnExitPosition = turnExitPosition;
     m_exitPosition = exitPosition;
     m_targetPosition = targetPosition;
-    m_toTurnEntryDuration =
-        durationForDistance(length(m_turnEntryPosition - m_lanePosition), kInternalRouteSpeed);
-    m_turnDuration =
-        durationForDistance((kTurnEndAngle - kTurnStartAngle) * m_turnRadius, kInternalRouteSpeed);
-    m_toExitDuration = durationForDistance(length(m_exitPosition - m_turnExitPosition), kInternalRouteSpeed);
     m_copy.setPosition(sourcePosition);
-    m_phaseTime = 0.0f;
-    m_phase = Phase::Pause;
     m_hasRoute = true;
+    m_visible = false;
 }
 
-void MemoryReadAnimation::update(float deltaSeconds) {
-    if (!m_hasRoute) {
+void MemoryReadAnimation::sync(const sim::MemoryTransaction& transaction, sim::Tick tick) {
+    if (!m_hasRoute || transaction.isCompleted(tick)) {
+        m_visible = false;
         return;
     }
 
-    m_phaseTime += deltaSeconds;
-
-    switch (m_phase) {
-    case Phase::Pause:
-        if (m_phaseTime >= kPauseDuration) {
-            m_phaseTime = 0.0f;
-            m_phase = Phase::Exit;
-            m_copy.setPosition(m_sourcePosition);
-        }
+    switch (transaction.getPhase(tick)) {
+    case sim::MemoryTransactionPhase::ToRamPort:
+        m_copy.setPosition(sampleToRamPort(transaction.getPhaseProgress(tick)));
+        m_visible = true;
         break;
 
-    case Phase::Exit: {
-        const float t = std::min(m_phaseTime / kExitDuration, 1.0f);
-        m_copy.setPosition(lerp(m_sourcePosition, m_lanePosition, easeInOut(t)));
-
-        if (t >= 1.0f) {
-            m_phaseTime = 0.0f;
-            m_phase = Phase::ToTurnEntry;
-        }
+    case sim::MemoryTransactionPhase::OnBus:
+        m_copy.setPosition(
+            lerp(m_exitPosition, m_targetPosition, easeInOut(transaction.getPhaseProgress(tick))));
+        m_visible = true;
         break;
-    }
 
-    case Phase::ToTurnEntry: {
-        const float t = std::min(m_phaseTime / m_toTurnEntryDuration, 1.0f);
-        m_copy.setPosition(lerp(m_lanePosition, m_turnEntryPosition, softEase(t)));
-
-        if (t >= 1.0f) {
-            m_phaseTime = 0.0f;
-            m_phase = Phase::Turn;
-        }
-        break;
-    }
-
-    case Phase::Turn: {
-        const float t = std::min(m_phaseTime / m_turnDuration, 1.0f);
-        const float angle = kTurnStartAngle + (kTurnEndAngle - kTurnStartAngle) * softEase(t);
-        const sf::Vector2f center{m_turnCenter.x + std::cos(angle) * m_turnRadius,
-                                  m_turnCenter.y + std::sin(angle) * m_turnRadius};
-        m_copy.setPosition({center.x - CacheLine::kWidth * 0.5f, center.y - CacheLine::kHeight * 0.5f});
-
-        if (t >= 1.0f) {
-            m_phaseTime = 0.0f;
-            m_phase = Phase::ToExit;
-        }
-        break;
-    }
-
-    case Phase::ToExit: {
-        const float t = std::min(m_phaseTime / m_toExitDuration, 1.0f);
-        m_copy.setPosition(lerp(m_turnExitPosition, m_exitPosition, softEase(t)));
-
-        if (t >= 1.0f) {
-            m_phaseTime = 0.0f;
-            m_phase = Phase::Travel;
-        }
-        break;
-    }
-
-    case Phase::Travel: {
-        const float t = std::min(m_phaseTime / kTravelDuration, 1.0f);
-        m_copy.setPosition(lerp(m_exitPosition, m_targetPosition, easeInOut(t)));
-
-        if (t >= 1.0f) {
-            m_phaseTime = 0.0f;
-            m_phase = Phase::Hold;
-        }
-        break;
-    }
-
-    case Phase::Hold:
+    case sim::MemoryTransactionPhase::Install:
         m_copy.setPosition(m_targetPosition);
-        if (m_phaseTime >= kHoldDuration) {
-            m_phaseTime = 0.0f;
-            m_phase = Phase::Pause;
-            m_cycleCompleted = true;
-        }
+        m_visible = true;
+        break;
+
+    case sim::MemoryTransactionPhase::Completed:
+        m_visible = false;
         break;
     }
 }
 
-bool MemoryReadAnimation::consumeCycleCompleted() {
-    const bool completed = m_cycleCompleted;
-    m_cycleCompleted = false;
-    return completed;
+void MemoryReadAnimation::clear() {
+    m_visible = false;
 }
 
 sf::Vector2f MemoryReadAnimation::lerp(sf::Vector2f from, sf::Vector2f to, float t) {
@@ -163,8 +89,51 @@ float MemoryReadAnimation::softEase(float t) {
            amplitude * std::sin(std::numbers::pi_v<float> * 2.0f * t) / (std::numbers::pi_v<float> * 2.0f);
 }
 
+sf::Vector2f MemoryReadAnimation::sampleTurnPosition(sf::Vector2f center, float radius, float t) {
+    const float angle = kTurnStartAngle + (kTurnEndAngle - kTurnStartAngle) * softEase(t);
+    const sf::Vector2f shapeCenter{center.x + std::cos(angle) * radius, center.y + std::sin(angle) * radius};
+    return {shapeCenter.x - CacheLine::kWidth * 0.5f, shapeCenter.y - CacheLine::kHeight * 0.5f};
+}
+
+sf::Vector2f MemoryReadAnimation::sampleToRamPort(float t) const {
+    const float laneDistance = length(m_lanePosition - m_sourcePosition);
+    const float toTurnEntryDistance = length(m_turnEntryPosition - m_lanePosition);
+    const float turnDistance = (kTurnEndAngle - kTurnStartAngle) * m_turnRadius;
+    const float toExitDistance = length(m_exitPosition - m_turnExitPosition);
+    const float totalDistance = laneDistance + toTurnEntryDistance + turnDistance + toExitDistance;
+
+    if (totalDistance <= 0.0f) {
+        return m_sourcePosition;
+    }
+
+    float remainingDistance = totalDistance * softEase(t);
+
+    if (remainingDistance <= laneDistance) {
+        return lerp(
+            m_sourcePosition, m_lanePosition, laneDistance > 0.0f ? remainingDistance / laneDistance : 1.0f);
+    }
+    remainingDistance -= laneDistance;
+
+    if (remainingDistance <= toTurnEntryDistance) {
+        return lerp(m_lanePosition,
+                    m_turnEntryPosition,
+                    toTurnEntryDistance > 0.0f ? remainingDistance / toTurnEntryDistance : 1.0f);
+    }
+    remainingDistance -= toTurnEntryDistance;
+
+    if (remainingDistance <= turnDistance) {
+        return sampleTurnPosition(
+            m_turnCenter, m_turnRadius, turnDistance > 0.0f ? remainingDistance / turnDistance : 1.0f);
+    }
+    remainingDistance -= turnDistance;
+
+    return lerp(m_turnExitPosition,
+                m_exitPosition,
+                toExitDistance > 0.0f ? remainingDistance / toExitDistance : 1.0f);
+}
+
 void MemoryReadAnimation::draw(sf::RenderTarget& target, sf::RenderStates states) const {
-    if (!m_hasRoute || m_phase == Phase::Pause || m_phase == Phase::Hold) {
+    if (!m_hasRoute || !m_visible) {
         return;
     }
 

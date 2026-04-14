@@ -68,11 +68,16 @@ class MemoryTransaction {
     [[nodiscard]] const MemoryTransactionDurations& getDurations() const {
         return m_durations;
     }
+    [[nodiscard]] bool isInstalledInCache() const {
+        return m_installedInCache;
+    }
 
     [[nodiscard]] bool isCompleted(Tick tick) const;
     [[nodiscard]] MemoryTransactionPhase getPhase(Tick tick) const;
     [[nodiscard]] float getOverallProgress(Tick tick) const;
     [[nodiscard]] float getPhaseProgress(Tick tick) const;
+
+    void markInstalledInCache();
 
   private:
     [[nodiscard]] Tick getElapsedTicks(Tick tick) const;
@@ -85,5 +90,6 @@ class MemoryTransaction {
     std::size_t m_targetCacheSlotIndex = 0;
     Tick m_startTick = 0;
     MemoryTransactionDurations m_durations;
+    bool m_installedInCache = false;
 };
 } // namespace sim
