@@ -1,23 +1,16 @@
 #include "sim/RAM.h"
 
+#include "sim/Math.h"
+
 #include <algorithm>
 #include <stdexcept>
-
-namespace {
-std::size_t ceilDiv(std::size_t value, std::size_t divisor) {
-    if (divisor == 0) {
-        return 0;
-    }
-    return (value + divisor - 1) / divisor;
-}
-} // namespace
 
 namespace sim {
 RAM::RAM(std::size_t sizeInBytes) : m_bytes(sizeInBytes, std::byte{0}) {
 }
 
 std::size_t RAM::getLineCount() const {
-    return ceilDiv(m_bytes.size(), kCacheLineSizeInBytes);
+    return math::ceilDiv(m_bytes.size(), kCacheLineSizeInBytes);
 }
 
 bool RAM::contains(Address address, std::size_t sizeInBytes) const {

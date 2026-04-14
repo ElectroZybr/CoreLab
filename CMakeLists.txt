@@ -42,6 +42,8 @@ add_executable(CoreLab
     objects/CacheLine.cpp
     objects/RAM.cpp
     scene/Scene.cpp
+    sim/Cache.cpp
+    sim/MemoryTransaction.cpp
     sim/RAM.cpp
     sim/simulation.cpp
     view/CacheLineView.cpp

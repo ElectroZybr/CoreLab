@@ -1,5 +1,7 @@
 #include "RAM.h"
 
+#include "sim/Math.h"
+
 #include <array>
 #include <algorithm>
 #include <cmath>
@@ -26,14 +28,6 @@ constexpr float kTrackTurnRadius = 200.0f;
 constexpr std::size_t kTrackTurnSegments = 10;
 constexpr float kExitOffsetY = 0.0f;
 const sf::Color kTrackColor(116, 134, 165);
-
-std::size_t ceilDiv(std::size_t value, std::size_t divisor) {
-    if (divisor == 0) {
-        return 0;
-    }
-
-    return (value + divisor - 1) / divisor;
-}
 
 void buildRoundedRect(sf::ConvexShape& shape, sf::Vector2f size, float radius) {
     constexpr float halfPi = std::numbers::pi_v<float> * 0.5f;
@@ -64,7 +58,7 @@ sf::Vector2f computeRamSize(std::size_t slotCount) {
     }
 
     const std::size_t columns = std::min(slotCount, kMaxColumns);
-    const std::size_t rows = ceilDiv(slotCount, columns);
+    const std::size_t rows = math::ceilDiv(slotCount, columns);
 
     const float slotsWidth =
         static_cast<float>(columns) * kSlotSize.x + static_cast<float>(columns - 1) * kColumnGap;
@@ -101,7 +95,7 @@ sf::VertexArray buildTrackBend(
 } // namespace
 
 RAM::RAM(std::size_t sizeInBytes, const sf::Font* font) : m_font(font), m_sizeInBytes(sizeInBytes) {
-    m_slotCount = ceilDiv(m_sizeInBytes, kCacheLineSizeInBytes);
+    m_slotCount = math::ceilDiv(m_sizeInBytes, kCacheLineSizeInBytes);
     rebuildGeometry();
     rebuildText();
     layout();
@@ -196,7 +190,7 @@ void RAM::layout() {
     m_trackBends.clear();
 
     const std::size_t columns = std::min(m_slotCount, kMaxColumns);
-    const std::size_t rows = ceilDiv(m_slotCount, columns);
+    const std::size_t rows = math::ceilDiv(m_slotCount, columns);
     const float busObjectX = m_position.x + kBusObjectInsetX;
     const float busCenterX = busObjectX + CacheLine::kWidth * 0.5f;
     const float lastLaneCenterY = m_position.y + kSlotsTopOffset +
