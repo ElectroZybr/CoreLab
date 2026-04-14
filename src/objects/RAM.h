@@ -17,7 +17,10 @@ public:
     {
         sf::Vector2f sourcePosition;
         sf::Vector2f lanePosition;
-        sf::Vector2f busPosition;
+        sf::Vector2f turnEntryPosition;
+        sf::Vector2f turnCenter;
+        float turnRadius = 0.0f;
+        sf::Vector2f turnExitPosition;
         sf::Vector2f exitPosition;
     };
 

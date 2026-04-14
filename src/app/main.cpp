@@ -1,5 +1,7 @@
 #include <SFML/Graphics.hpp>
 
+#include <array>
+
 #include "animation/MemoryReadAnimation.h"
 #include "core/Camera.h"
 #include "input/Controls.h"
@@ -14,6 +16,7 @@ constexpr float kInitialZoom = 0.5f;
 constexpr float kRamMoveSpeed = 900.0f;
 constexpr sf::Vector2f kInitialCameraPosition(0.0f, 0.0f);
 const sf::Color kBackgroundColor(8, 10, 18);
+constexpr std::array<std::size_t, 4> kAnimatedBlocks{8, 9, 10, 11};
 }
 
 int main()
@@ -38,14 +41,24 @@ int main()
     RAM ram(4096, scene.getFont());
     ram.setPosition({-2392.0f, 60.0f});
     MemoryReadAnimation readAnimation(scene.getFont());
-    const RAM::ReadPath readPath = ram.getReadPath(10);
-    readAnimation.setRoute(
-        readPath.sourcePosition,
-        readPath.lanePosition,
-        readPath.busPosition,
-        readPath.exitPosition,
-        scene.getCacheLinePosition()
-    );
+    std::size_t animatedBlockIndex = 0;
+
+    const auto applyAnimatedBlockRoute = [&]()
+    {
+        const RAM::ReadPath readPath = ram.getReadPath(kAnimatedBlocks[animatedBlockIndex]);
+        readAnimation.setRoute(
+            readPath.sourcePosition,
+            readPath.lanePosition,
+            readPath.turnEntryPosition,
+            readPath.turnCenter,
+            readPath.turnRadius,
+            readPath.turnExitPosition,
+            readPath.exitPosition,
+            scene.getCacheLineEntryPosition()
+        );
+    };
+
+    applyAnimatedBlockRoute();
 
     sf::Clock frameClock;
 
@@ -67,18 +80,16 @@ int main()
         {
             ramMovement = ramMovement.normalized();
             ram.setPosition(ram.getPosition() + ramMovement * kRamMoveSpeed * deltaSeconds);
-
-            const RAM::ReadPath updatedReadPath = ram.getReadPath(10);
-            readAnimation.setRoute(
-                updatedReadPath.sourcePosition,
-                updatedReadPath.lanePosition,
-                updatedReadPath.busPosition,
-                updatedReadPath.exitPosition,
-                scene.getCacheLinePosition()
-            );
+            applyAnimatedBlockRoute();
         }
 
         readAnimation.update(deltaSeconds);
+        if (readAnimation.consumeCycleCompleted())
+        {
+            animatedBlockIndex = (animatedBlockIndex + 1) % kAnimatedBlocks.size();
+            applyAnimatedBlockRoute();
+        }
+
         camera.update(window);
 
         window.clear(kBackgroundColor);

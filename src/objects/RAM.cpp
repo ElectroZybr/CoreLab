@@ -23,7 +23,7 @@ constexpr float kSlotsTopOffset = 74.0f;
 constexpr float kMinimumWidth = 320.0f;
 constexpr std::size_t kMaxColumns = 8;
 constexpr float kTrackThickness = 6.0f;
-constexpr float kTrackTurnRadius = 100.0f;
+constexpr float kTrackTurnRadius = 200.0f;
 constexpr std::size_t kTrackTurnSegments = 10;
 constexpr float kExitOffsetY = 0.0f;
 const sf::Color kTrackColor(116, 134, 165);
@@ -172,7 +172,7 @@ RAM::ReadPath RAM::getReadPath(std::size_t index) const
 {
     if (index >= m_lines.size())
     {
-        return {m_position, m_position, m_position, m_position};
+        return {m_position, m_position, m_position, m_position, 0.0f, m_position, m_position};
     }
 
     const sf::Vector2f sourcePosition = m_lines[index].getPosition();
@@ -181,16 +181,33 @@ RAM::ReadPath RAM::getReadPath(std::size_t index) const
         computeLaneTop(sourcePosition.y)
     };
     const float busObjectX = m_position.x + kBusObjectInsetX;
-    const sf::Vector2f busPosition{
-        busObjectX,
+    const float laneCenterY = lanePosition.y + CacheLine::kHeight * 0.5f;
+    const sf::Vector2f turnEntryPosition{
+        busObjectX + kTrackTurnRadius,
         lanePosition.y
     };
+    const sf::Vector2f turnCenter{
+        busObjectX + CacheLine::kWidth * 0.5f + kTrackTurnRadius,
+        laneCenterY - kTrackTurnRadius
+    };
+    const sf::Vector2f turnExitPosition{
+        busObjectX,
+        lanePosition.y - kTrackTurnRadius
+    };
     const sf::Vector2f exitPosition{
-        busPosition.x,
+        turnExitPosition.x,
         m_position.y - CacheLine::kHeight - kExitOffsetY
     };
 
-    return {sourcePosition, lanePosition, busPosition, exitPosition};
+    return {
+        sourcePosition,
+        lanePosition,
+        turnEntryPosition,
+        turnCenter,
+        kTrackTurnRadius,
+        turnExitPosition,
+        exitPosition
+    };
 }
 
 void RAM::setFont(const sf::Font* font)
