@@ -36,6 +36,7 @@ FetchContent_MakeAvailable(sfml)
 
 add_executable(CoreLab
     src/app/main.cpp
+    src/animation/MemoryReadAnimation.cpp
     src/core/Camera.cpp
     src/input/Controls.cpp
     src/scene/Scene.cpp
