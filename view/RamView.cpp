@@ -18,19 +18,30 @@ constexpr int kCornerPointCount = 16;
 constexpr sf::Vector2f kSlotSize{view::CacheLineView::kWidth, view::CacheLineView::kHeight};
 constexpr float kColumnGap = 20.0f;
 constexpr float kRowGap = 110.0f;
-constexpr float kBusObjectInsetX = 36.0f;
-constexpr float kBusLaneWidth = view::CacheLineView::kWidth + 72.0f;
-constexpr float kLeftPadding = kBusLaneWidth + 24.0f;
+constexpr float kCollectorCenterInsetX = 128.0f;
 constexpr float kRightPadding = 24.0f;
 constexpr float kTopPadding = 18.0f;
 constexpr float kBottomPadding = 24.0f;
 constexpr float kSlotsTopOffset = 74.0f;
+constexpr float kDragHandleHeight = kSlotsTopOffset - 8.0f;
+constexpr float kDragMarkWidth = 60.0f;
+constexpr float kDragMarkHeight = 5.0f;
+constexpr float kDragMarkGap = 8.0f;
 constexpr float kMinimumWidth = 320.0f;
 constexpr std::size_t kMaxColumns = 8;
 constexpr float kTrackThickness = 6.0f;
-constexpr float kCollectorTurnRadius = 84.0f;
-constexpr float kOutputTrackOutsetX = 80.0f;
+constexpr float kCollectorTurnRadius = 100.0f;
+constexpr float kLeftPadding = kCollectorCenterInsetX + kCollectorTurnRadius + 24.0f;
+constexpr float kOutputPortWidth = 28.0f;
+constexpr float kOutputPortHeight = 52.0f;
 const sf::Color kTrackColor(116, 134, 165);
+const sf::Color kOutputPortFillColor(48, 58, 78);
+const sf::Color kOutputPortOutlineColor(132, 154, 191);
+const sf::Color kDragHandleHoverColor(148, 172, 210, 34);
+const sf::Color kDragHandleActiveColor(186, 214, 255, 54);
+const sf::Color kDragMarkIdleColor(116, 134, 165, 120);
+const sf::Color kDragMarkHoverColor(183, 210, 244, 170);
+const sf::Color kDragMarkActiveColor(225, 239, 255, 220);
 
 struct TangentBridge {
     bool valid = false;
@@ -210,6 +221,31 @@ void RamView::setPosition(sf::Vector2f position) {
     layout();
 }
 
+sf::FloatRect RamView::getBounds() const {
+    return {m_position, m_size};
+}
+
+bool RamView::isInDragHandle(sf::Vector2f worldPoint) const {
+    const sf::FloatRect dragHandleBounds{m_position, {m_size.x, kDragHandleHeight}};
+    return dragHandleBounds.contains(worldPoint);
+}
+
+void RamView::setDragState(bool hovered, bool dragging) {
+    m_dragHovered = hovered;
+    m_dragging = dragging;
+
+    const sf::Color overlayColor = m_dragging
+                                       ? kDragHandleActiveColor
+                                       : (m_dragHovered ? kDragHandleHoverColor : sf::Color::Transparent);
+    m_dragHandleOverlay.setFillColor(overlayColor);
+
+    const sf::Color markColor =
+        m_dragging ? kDragMarkActiveColor : (m_dragHovered ? kDragMarkHoverColor : kDragMarkIdleColor);
+    for (sf::RectangleShape& mark : m_dragHandleMarks) {
+        mark.setFillColor(markColor);
+    }
+}
+
 sf::Vector2f RamView::getLinePosition(std::size_t index) const {
     if (index >= m_lines.size()) {
         return m_position;
@@ -243,9 +279,9 @@ RamView::ReadPath RamView::getReadPath(std::size_t index) const {
     const sf::Vector2f sourcePosition = m_lines[index].getPosition();
     const sf::Vector2f lanePosition{sourcePosition.x, computeLaneTop(sourcePosition.y)};
     const float laneCenterY = lanePosition.y + CacheLineView::kHeight * 0.5f;
-    const float busObjectX = m_position.x + kBusObjectInsetX;
-    const float busCenterX = busObjectX + CacheLineView::kWidth * 0.5f;
-    const float outputCenterX = m_position.x - kOutputTrackOutsetX;
+    const float busCenterX = m_position.x + kCollectorCenterInsetX;
+    const float busObjectX = busCenterX - CacheLineView::kWidth * 0.5f;
+    const float outputCenterX = m_position.x;
     const float firstLaneCenterY =
         m_position.y + kSlotsTopOffset + kSlotSize.y + (kRowGap - kSlotSize.y) * 0.5f + kSlotSize.y * 0.5f;
     const float lastLaneCenterY = m_position.y + kSlotsTopOffset +
@@ -366,6 +402,22 @@ void RamView::rebuildGeometry() {
     m_container.setOutlineThickness(3.0f);
     m_container.setOutlineColor(sf::Color(88, 112, 150));
 
+    m_outputPort.setOutlineThickness(0.0f);
+    buildRoundedRect(m_outputPort, {kOutputPortWidth, kOutputPortHeight}, 12.0f);
+    m_outputPort.setOutlineThickness(3.0f);
+    m_outputPort.setFillColor(kOutputPortFillColor);
+    m_outputPort.setOutlineColor(kOutputPortOutlineColor);
+
+    m_dragHandleOverlay.setOutlineThickness(0.0f);
+    buildRoundedRect(m_dragHandleOverlay, {m_size.x, kDragHandleHeight}, kCornerRadius);
+    m_dragHandleOverlay.setFillColor(sf::Color::Transparent);
+
+    m_dragHandleMarks.assign(3, sf::RectangleShape{{kDragMarkWidth, kDragMarkHeight}});
+    for (sf::RectangleShape& mark : m_dragHandleMarks) {
+        mark.setOrigin({kDragMarkWidth * 0.5f, kDragMarkHeight * 0.5f});
+        mark.setFillColor(kDragMarkIdleColor);
+    }
+
     m_lines.clear();
     m_lines.reserve(m_slotCount);
     for (std::size_t index = 0; index < m_slotCount; ++index) {
@@ -386,6 +438,16 @@ void RamView::rebuildText() {
 
 void RamView::layout() {
     m_container.setPosition(m_position);
+    m_outputPort.setPosition(
+        {m_position.x - kOutputPortWidth * 0.5f, m_position.y + m_size.y * 0.5f - kOutputPortHeight * 0.5f});
+    m_dragHandleOverlay.setPosition(m_position);
+
+    const float marksCenterX = m_position.x + m_size.x * 0.5f;
+    const float marksStartY = m_position.y + 22.0f;
+    for (std::size_t index = 0; index < m_dragHandleMarks.size(); ++index) {
+        m_dragHandleMarks[index].setPosition(
+            {marksCenterX, marksStartY + static_cast<float>(index) * (kDragMarkHeight + kDragMarkGap)});
+    }
 
     if (m_titleText) {
         m_titleText->setPosition(m_position + sf::Vector2f(24.0f, kTopPadding));
@@ -401,15 +463,16 @@ void RamView::layout() {
 
     const std::size_t columns = std::min(m_slotCount, kMaxColumns);
     const std::size_t rows = math::ceilDiv(m_slotCount, columns);
-    const float busObjectX = m_position.x + kBusObjectInsetX;
-    const float busCenterX = busObjectX + CacheLineView::kWidth * 0.5f;
-    const float outputCenterX = m_position.x - kOutputTrackOutsetX;
+    const float busCenterX = m_position.x + kCollectorCenterInsetX;
     const float firstLaneCenterY =
         m_position.y + kSlotsTopOffset + kSlotSize.y + (kRowGap - kSlotSize.y) * 0.5f + kSlotSize.y * 0.5f;
     const float lastLaneCenterY = m_position.y + kSlotsTopOffset +
                                   static_cast<float>(rows - 1) * (kSlotSize.y + kRowGap) + kSlotSize.y +
                                   (kRowGap - kSlotSize.y) * 0.5f + kSlotSize.y * 0.5f;
     const float junctionCenterY = (firstLaneCenterY + lastLaneCenterY) * 0.5f;
+    const float outputCenterX = m_position.x;
+    m_outputPort.setPosition(
+        {m_position.x - kOutputPortWidth * 0.5f, junctionCenterY - kOutputPortHeight * 0.5f});
     const std::optional<TangentBridge> upperTangent =
         findNearestUpperTangent(m_position, rows, busCenterX, junctionCenterY);
     const std::optional<TangentBridge> lowerTangent =
@@ -548,6 +611,12 @@ void RamView::layout() {
 
 void RamView::draw(sf::RenderTarget& target, sf::RenderStates states) const {
     target.draw(m_container, states);
+    target.draw(m_outputPort, states);
+    target.draw(m_dragHandleOverlay, states);
+
+    for (const sf::RectangleShape& mark : m_dragHandleMarks) {
+        target.draw(mark, states);
+    }
 
     for (const rails::RailPath& path : m_railPaths) {
         target.draw(path, states);

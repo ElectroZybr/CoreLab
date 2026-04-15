@@ -4,6 +4,7 @@
 
 #include "sim/MemoryTransaction.h"
 #include "view/CacheLineView.h"
+#include "view/rails/RailPath.h"
 
 class MemoryReadAnimation : public sf::Drawable {
   public:
@@ -26,7 +27,9 @@ class MemoryReadAnimation : public sf::Drawable {
                   sf::Vector2f junctionTurnExitPosition,
                   sf::Vector2f exitPosition,
                   sf::Vector2f targetPosition);
-    void sync(const sim::MemoryTransaction& transaction, sim::Tick tick);
+    void sync(const sim::MemoryTransaction& transaction,
+              sim::Tick tick,
+              const view::rails::RailPath* busPath = nullptr);
     void clear();
 
   private:

@@ -7,6 +7,10 @@ namespace {
 float length(sf::Vector2f vector) {
     return std::sqrt(vector.x * vector.x + vector.y * vector.y);
 }
+
+sf::Vector2f toTopLeft(sf::Vector2f center) {
+    return {center.x - view::CacheLineView::kWidth * 0.5f, center.y - view::CacheLineView::kHeight * 0.5f};
+}
 } // namespace
 
 MemoryReadAnimation::MemoryReadAnimation(const sf::Font* font) : m_font(font), m_copy(font) {
@@ -54,7 +58,8 @@ void MemoryReadAnimation::setRoute(sf::Vector2f sourcePosition,
     m_visible = false;
 }
 
-void MemoryReadAnimation::sync(const sim::MemoryTransaction& transaction, sim::Tick tick) {
+void MemoryReadAnimation::sync(
+    const sim::MemoryTransaction& transaction, sim::Tick tick, const view::rails::RailPath* busPath) {
     if (!m_hasRoute || transaction.isCompleted(tick)) {
         m_visible = false;
         return;
@@ -67,8 +72,13 @@ void MemoryReadAnimation::sync(const sim::MemoryTransaction& transaction, sim::T
         break;
 
     case sim::MemoryTransactionPhase::OnBus:
-        m_copy.setPosition(
-            lerp(m_exitPosition, m_targetPosition, easeInOut(transaction.getPhaseProgress(tick))));
+        if (busPath && !busPath->isEmpty() && busPath->getLength() > 0.0f) {
+            const float distance = busPath->getLength() * easeInOut(transaction.getPhaseProgress(tick));
+            m_copy.setPosition(toTopLeft(busPath->samplePoint(distance)));
+        } else {
+            m_copy.setPosition(
+                lerp(m_exitPosition, m_targetPosition, easeInOut(transaction.getPhaseProgress(tick))));
+        }
         m_visible = true;
         break;
 

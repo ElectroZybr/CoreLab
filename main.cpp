@@ -18,9 +18,16 @@ constexpr unsigned int kWindowHeight = 900;
 constexpr float kInitialZoom = 0.5f;
 constexpr float kRamMoveSpeed = 900.0f;
 constexpr float kSimulationTicksPerSecond = 30.0f;
+constexpr float kRailThickness = 6.0f;
 constexpr sf::Vector2f kInitialCameraPosition(0.0f, 0.0f);
 const sf::Color kBackgroundColor(8, 10, 18);
 constexpr std::array<std::size_t, 4> kAnimatedBlocks{8, 16, 24, 32};
+
+enum class DragTarget {
+    None,
+    Ram,
+    Cache,
+};
 
 sf::Vector2f normalizeOrZero(sf::Vector2f vector) {
     const float lengthSquared = vector.x * vector.x + vector.y * vector.y;
@@ -65,13 +72,16 @@ int main() {
 
     sim::Simulation simulation(4096);
     Scene scene;
-    view::RamView ram(simulation.getRam().getSizeInBytes(), scene.getFont(), {-2392.0f, 60.0f});
-    view::CacheView cache(scene.getFont(), {-1000.0f, -1000.0f});
-    view::BusView ramToCacheBus(10.0f);
+    view::RamView ram(simulation.getRam().getSizeInBytes(), scene.getFont(), {0.0f, 0.0f});
+    view::CacheView cache(scene.getFont(), {-2500.0f, 0.0f});
+    view::BusView ramToCacheBus(kRailThickness);
     cache.sync(simulation.getCache());
     MemoryReadAnimation readAnimation(scene.getFont());
     std::size_t nextAnimatedBlockIndex = 0;
     float simulationTickAccumulator = 0.0f;
+    bool previousLeftMousePressed = false;
+    DragTarget dragTarget = DragTarget::None;
+    sf::Vector2f dragOffset{0.0f, 0.0f};
 
     sf::Clock frameClock;
 
@@ -91,6 +101,34 @@ int main() {
             ramMovement = normalizeOrZero(ramMovement);
             ram.setPosition(ram.getPosition() + ramMovement * kRamMoveSpeed * deltaSeconds);
         }
+
+        const bool leftMousePressed = sf::Mouse::isButtonPressed(sf::Mouse::Button::Left);
+        const sf::Vector2f mouseWorldPosition = camera.screenToWorld(sf::Mouse::getPosition(window));
+        const bool ramHovered = ram.isInDragHandle(mouseWorldPosition);
+        const bool cacheHovered = cache.isInDragHandle(mouseWorldPosition);
+
+        if (leftMousePressed && !previousLeftMousePressed) {
+            if (cacheHovered) {
+                dragTarget = DragTarget::Cache;
+                dragOffset = mouseWorldPosition - cache.getPosition();
+            } else if (ramHovered) {
+                dragTarget = DragTarget::Ram;
+                dragOffset = mouseWorldPosition - ram.getPosition();
+            }
+        }
+
+        if (!leftMousePressed) {
+            dragTarget = DragTarget::None;
+        } else if (dragTarget == DragTarget::Ram) {
+            ram.setPosition(mouseWorldPosition - dragOffset);
+        } else if (dragTarget == DragTarget::Cache) {
+            cache.setPosition(mouseWorldPosition - dragOffset);
+        }
+
+        ram.setDragState(ramHovered || dragTarget == DragTarget::Ram, dragTarget == DragTarget::Ram);
+        cache.setDragState(cacheHovered || dragTarget == DragTarget::Cache, dragTarget == DragTarget::Cache);
+
+        previousLeftMousePressed = leftMousePressed;
 
         simulationTickAccumulator += deltaSeconds * kSimulationTicksPerSecond;
         while (simulationTickAccumulator >= 1.0f) {
@@ -128,7 +166,8 @@ int main() {
                                    readPath.junctionTurnExitPosition,
                                    readPath.exitPosition,
                                    cache.getEntryPosition());
-            readAnimation.sync(*activeTransaction, simulation.getCurrentTick());
+            readAnimation.sync(
+                *activeTransaction, simulation.getCurrentTick(), ramToCacheBus.isVisible() ? &ramToCacheBus.getPath() : nullptr);
         } else {
             cache.sync(simulation.getCache());
             ramToCacheBus.clear();

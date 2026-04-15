@@ -18,6 +18,9 @@ class CacheView : public sf::Drawable {
     [[nodiscard]] sf::Vector2f getPosition() const {
         return m_position;
     }
+    [[nodiscard]] sf::FloatRect getBounds() const;
+    [[nodiscard]] bool isInDragHandle(sf::Vector2f worldPoint) const;
+    void setDragState(bool hovered, bool dragging);
     [[nodiscard]] sf::Vector2f getLinePosition() const;
     [[nodiscard]] sf::Vector2f getEntryPosition() const;
 
@@ -39,6 +42,11 @@ class CacheView : public sf::Drawable {
     bool m_selectedSlotValid = false;
 
     sf::ConvexShape m_container;
+    sf::ConvexShape m_inputPort;
+    sf::ConvexShape m_dragHandleOverlay;
+    std::vector<sf::RectangleShape> m_dragHandleMarks;
+    bool m_dragHovered = false;
+    bool m_dragging = false;
     sf::ConvexShape m_selectionFrame;
     std::optional<sf::Text> m_titleText;
     std::optional<sf::Text> m_summaryText;

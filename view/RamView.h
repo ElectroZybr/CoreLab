@@ -41,6 +41,9 @@ class RamView : public sf::Drawable {
     [[nodiscard]] sf::Vector2f getPosition() const {
         return m_position;
     }
+    [[nodiscard]] sf::FloatRect getBounds() const;
+    [[nodiscard]] bool isInDragHandle(sf::Vector2f worldPoint) const;
+    void setDragState(bool hovered, bool dragging);
     [[nodiscard]] sf::Vector2f getLinePosition(std::size_t index) const;
     [[nodiscard]] ReadPath getReadPath(std::size_t index) const;
     [[nodiscard]] std::size_t getSizeInBytes() const {
@@ -64,6 +67,11 @@ class RamView : public sf::Drawable {
     sf::Vector2f m_position{0.0f, 0.0f};
     sf::Vector2f m_size{0.0f, 0.0f};
     sf::ConvexShape m_container;
+    sf::ConvexShape m_outputPort;
+    sf::ConvexShape m_dragHandleOverlay;
+    std::vector<sf::RectangleShape> m_dragHandleMarks;
+    bool m_dragHovered = false;
+    bool m_dragging = false;
     std::vector<rails::RailPath> m_railPaths;
     std::vector<CacheLineView> m_lines;
     std::optional<sf::Text> m_titleText;
