@@ -17,7 +17,7 @@ constexpr unsigned int kWindowWidth = 1600;
 constexpr unsigned int kWindowHeight = 900;
 constexpr float kInitialZoom = 0.5f;
 constexpr float kRamMoveSpeed = 900.0f;
-constexpr float kSimulationTicksPerSecond = 60.0f;
+constexpr float kSimulationTicksPerSecond = 12.0f;
 constexpr float kRailThickness = 6.0f;
 constexpr sf::Vector2f kInitialCameraPosition(0.0f, 0.0f);
 const sf::Color kBackgroundColor(8, 10, 18);
@@ -207,8 +207,8 @@ int main() {
 
             cache.sync(simulation.getCache());
             view::BusView previewBus(kRailThickness);
-            previewBus.setEndpoints(
-                previewReadPath.exitPosition, cache.getEntryPosition(), cache.getEntryDirection());
+            previewBus.setCenterEndpoints(
+                previewReadPath.exitPosition, cache.getEntryCenter(), cache.getEntryDirection());
 
             const sim::MemoryTransactionDurations visualDurations =
                 computeVisualLoadDurations(previewReadPath,
@@ -224,7 +224,7 @@ int main() {
                                                                    sim::RAM::kCacheLineSizeInBytes);
             const view::RamView::ReadPath readPath = ram.getReadPath(lineIndex);
             cache.sync(simulation.getCache(), activeTransaction);
-            ramToCacheBus.setEndpoints(readPath.exitPosition, cache.getEntryPosition(), cache.getEntryDirection());
+            ramToCacheBus.setCenterEndpoints(readPath.exitPosition, cache.getEntryCenter(), cache.getEntryDirection());
             readAnimation.setRoute(readPath.sourcePosition,
                                    readPath.lanePosition,
                                    readPath.turnEntryPosition,
@@ -240,7 +240,7 @@ int main() {
                                    readPath.junctionTurnEndAngle,
                                    readPath.junctionTurnExitPosition,
                                    readPath.exitPosition,
-                                   cache.getLinePosition());
+                                   cache.getLineHeadCenter());
             readAnimation.sync(
                 *activeTransaction,
                 simulation.getCurrentTick(),

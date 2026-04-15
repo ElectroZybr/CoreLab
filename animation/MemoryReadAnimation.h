@@ -3,7 +3,6 @@
 #include <SFML/Graphics.hpp>
 
 #include "sim/MemoryTransaction.h"
-#include "view/CacheLineView.h"
 #include "view/rails/RailPath.h"
 
 class MemoryReadAnimation : public sf::Drawable {
@@ -34,6 +33,9 @@ class MemoryReadAnimation : public sf::Drawable {
     void clear();
 
   private:
+    static constexpr float kTrainWidth = 82.0f;
+    static constexpr float kTrainLength = 752.0f;
+
     [[nodiscard]] static sf::Vector2f lerp(sf::Vector2f from, sf::Vector2f to, float t);
     [[nodiscard]] static float easeInOut(float t);
     [[nodiscard]] static float softEase(float t);
@@ -41,11 +43,23 @@ class MemoryReadAnimation : public sf::Drawable {
     sampleArcPosition(sf::Vector2f center, float radius, float startAngle, float endAngle, float t);
     [[nodiscard]] float getToRamPortLength() const;
     [[nodiscard]] sf::Vector2f sampleToRamPortByDistance(float distance) const;
+    [[nodiscard]] sf::Vector2f sampleToRamPortTangentByDistance(float distance) const;
     [[nodiscard]] sf::Vector2f sampleToRamPort(float t) const;
+    [[nodiscard]] sf::Vector2f sampleRouteCenterByDistance(float distance,
+                                                           const view::rails::RailPath* busPath,
+                                                           const view::rails::RailPath* installPath) const;
+    [[nodiscard]] sf::Vector2f sampleRouteTangentByDistance(float distance,
+                                                            float totalDistance,
+                                                            const view::rails::RailPath* busPath,
+                                                            const view::rails::RailPath* installPath) const;
+    void rebuildRigidBody(sf::Vector2f headCenter);
+    void rebuildCurvedBody(float headDistance,
+                           float totalDistance,
+                           const view::rails::RailPath* busPath,
+                           const view::rails::RailPath* installPath);
     void draw(sf::RenderTarget& target, sf::RenderStates states) const override;
 
     const sf::Font* m_font = nullptr;
-    view::CacheLineView m_copy;
     sf::Vector2f m_sourcePosition{0.0f, 0.0f};
     sf::Vector2f m_lanePosition{0.0f, 0.0f};
     sf::Vector2f m_turnEntryPosition{0.0f, 0.0f};
@@ -64,4 +78,9 @@ class MemoryReadAnimation : public sf::Drawable {
     sf::Vector2f m_targetPosition{0.0f, 0.0f};
     bool m_hasRoute = false;
     bool m_visible = false;
+    sf::VertexArray m_bodyFill{sf::PrimitiveType::TriangleStrip};
+    sf::VertexArray m_leftOutline{sf::PrimitiveType::LineStrip};
+    sf::VertexArray m_rightOutline{sf::PrimitiveType::LineStrip};
+    sf::CircleShape m_headCap;
+    sf::CircleShape m_tailCap;
 };

@@ -254,6 +254,15 @@ sf::Vector2f RamView::getLinePosition(std::size_t index) const {
     return m_lines[index].getPosition();
 }
 
+sf::Vector2f RamView::getLineHeadCenter(std::size_t index) const {
+    if (index >= m_lines.size()) {
+        return m_position;
+    }
+
+    const sf::Vector2f topLeft = m_lines[index].getPosition();
+    return {topLeft.x + CacheLineView::kHeight * 0.5f, topLeft.y + CacheLineView::kHeight * 0.5f};
+}
+
 RamView::ReadPath RamView::getReadPath(std::size_t index) const {
     if (index >= m_lines.size()) {
         return {m_position,
@@ -276,11 +285,12 @@ RamView::ReadPath RamView::getReadPath(std::size_t index) const {
     const std::size_t columns = std::min(m_slotCount, kMaxColumns);
     const std::size_t rows = math::ceilDiv(m_slotCount, columns);
     const std::size_t row = index / columns;
-    const sf::Vector2f sourcePosition = m_lines[index].getPosition();
-    const sf::Vector2f lanePosition{sourcePosition.x, computeLaneTop(sourcePosition.y)};
-    const float laneCenterY = lanePosition.y + CacheLineView::kHeight * 0.5f;
+    const sf::Vector2f lineTopLeft = m_lines[index].getPosition();
+    const sf::Vector2f sourcePosition{lineTopLeft.x + CacheLineView::kHeight * 0.5f,
+                                      lineTopLeft.y + CacheLineView::kHeight * 0.5f};
+    const sf::Vector2f lanePosition{sourcePosition.x, computeLaneCenterY(m_position, row)};
+    const float laneCenterY = lanePosition.y;
     const float busCenterX = m_position.x + kCollectorCenterInsetX;
-    const float busObjectX = busCenterX - CacheLineView::kWidth * 0.5f;
     const float outputCenterX = m_position.x;
     const float firstLaneCenterY =
         m_position.y + kSlotsTopOffset + kSlotSize.y + (kRowGap - kSlotSize.y) * 0.5f + kSlotSize.y * 0.5f;
@@ -292,19 +302,17 @@ RamView::ReadPath RamView::getReadPath(std::size_t index) const {
         findNearestUpperTangent(m_position, rows, busCenterX, junctionCenterY);
     const std::optional<TangentBridge> lowerTangent =
         findNearestLowerTangent(m_position, rows, busCenterX, junctionCenterY);
-    sf::Vector2f turnEntryPosition{busObjectX + kCollectorTurnRadius, lanePosition.y};
+    sf::Vector2f turnEntryPosition{busCenterX + kCollectorTurnRadius, laneCenterY};
     sf::Vector2f turnCenter{busCenterX + kCollectorTurnRadius, laneCenterY - kCollectorTurnRadius};
     float turnStartAngle = std::numbers::pi_v<float> * 0.5f;
     float turnEndAngle = std::numbers::pi_v<float>;
-    sf::Vector2f turnExitPosition{busObjectX, lanePosition.y - kCollectorTurnRadius};
-    sf::Vector2f collectorPosition{busObjectX,
-                                   junctionCenterY + kCollectorTurnRadius - CacheLineView::kHeight * 0.5f};
+    sf::Vector2f turnExitPosition{busCenterX, laneCenterY - kCollectorTurnRadius};
+    sf::Vector2f collectorPosition{busCenterX, junctionCenterY + kCollectorTurnRadius};
     sf::Vector2f junctionTurnCenter{busCenterX - kCollectorTurnRadius,
                                     junctionCenterY + kCollectorTurnRadius};
     float junctionTurnStartAngle = 0.0f;
     float junctionTurnEndAngle = -std::numbers::pi_v<float> * 0.5f;
-    sf::Vector2f junctionTurnExitPosition{busObjectX - kCollectorTurnRadius,
-                                          junctionCenterY - CacheLineView::kHeight * 0.5f};
+    sf::Vector2f junctionTurnExitPosition{busCenterX - kCollectorTurnRadius, junctionCenterY};
 
     if (laneCenterY < junctionCenterY - 0.5f) {
         const bool isNearestUpper = upperTangent && upperTangent->row == row;
@@ -313,20 +321,16 @@ RamView::ReadPath RamView::getReadPath(std::size_t index) const {
         turnStartAngle = -std::numbers::pi_v<float> * 0.5f;
         turnEndAngle = isNearestUpper ? upperTangent->rowAngle : -std::numbers::pi_v<float>;
         turnExitPosition = isNearestUpper
-                               ? sf::Vector2f{upperTangent->rowPoint.x - CacheLineView::kWidth * 0.5f,
-                                              upperTangent->rowPoint.y - CacheLineView::kHeight * 0.5f}
-                               : sf::Vector2f{busObjectX, lanePosition.y + kCollectorTurnRadius};
+                               ? upperTangent->rowPoint
+                               : sf::Vector2f{busCenterX, laneCenterY + kCollectorTurnRadius};
         collectorPosition =
             isNearestUpper
-                ? sf::Vector2f{upperTangent->outputPoint.x - CacheLineView::kWidth * 0.5f,
-                               upperTangent->outputPoint.y - CacheLineView::kHeight * 0.5f}
-                : sf::Vector2f{busObjectX,
-                               junctionCenterY - kCollectorTurnRadius - CacheLineView::kHeight * 0.5f};
+                ? upperTangent->outputPoint
+                : sf::Vector2f{busCenterX, junctionCenterY - kCollectorTurnRadius};
         junctionTurnCenter = {busCenterX - kCollectorTurnRadius, junctionCenterY - kCollectorTurnRadius};
         junctionTurnStartAngle = isNearestUpper ? upperTangent->outputAngle : 0.0f;
         junctionTurnEndAngle = std::numbers::pi_v<float> * 0.5f;
-        junctionTurnExitPosition = {busObjectX - kCollectorTurnRadius,
-                                    junctionCenterY - CacheLineView::kHeight * 0.5f};
+        junctionTurnExitPosition = {busCenterX - kCollectorTurnRadius, junctionCenterY};
     } else if (laneCenterY > junctionCenterY + 0.5f) {
         const bool isNearestLower = lowerTangent && lowerTangent->row == row;
 
@@ -334,22 +338,18 @@ RamView::ReadPath RamView::getReadPath(std::size_t index) const {
         turnStartAngle = std::numbers::pi_v<float> * 0.5f;
         turnEndAngle = isNearestLower ? lowerTangent->rowAngle : std::numbers::pi_v<float>;
         turnExitPosition = isNearestLower
-                               ? sf::Vector2f{lowerTangent->rowPoint.x - CacheLineView::kWidth * 0.5f,
-                                              lowerTangent->rowPoint.y - CacheLineView::kHeight * 0.5f}
-                               : sf::Vector2f{busObjectX, lanePosition.y - kCollectorTurnRadius};
+                               ? lowerTangent->rowPoint
+                               : sf::Vector2f{busCenterX, laneCenterY - kCollectorTurnRadius};
         collectorPosition =
             isNearestLower
-                ? sf::Vector2f{lowerTangent->outputPoint.x - CacheLineView::kWidth * 0.5f,
-                               lowerTangent->outputPoint.y - CacheLineView::kHeight * 0.5f}
-                : sf::Vector2f{busObjectX,
-                               junctionCenterY + kCollectorTurnRadius - CacheLineView::kHeight * 0.5f};
+                ? lowerTangent->outputPoint
+                : sf::Vector2f{busCenterX, junctionCenterY + kCollectorTurnRadius};
         junctionTurnCenter = {busCenterX - kCollectorTurnRadius, junctionCenterY + kCollectorTurnRadius};
         junctionTurnStartAngle = isNearestLower ? lowerTangent->outputAngle : 0.0f;
         junctionTurnEndAngle = -std::numbers::pi_v<float> * 0.5f;
-        junctionTurnExitPosition = {busObjectX - kCollectorTurnRadius,
-                                    junctionCenterY - CacheLineView::kHeight * 0.5f};
+        junctionTurnExitPosition = {busCenterX - kCollectorTurnRadius, junctionCenterY};
     } else {
-        turnEntryPosition = {busObjectX, lanePosition.y};
+        turnEntryPosition = {busCenterX, laneCenterY};
         turnCenter = {busCenterX, laneCenterY};
         turnStartAngle = 0.0f;
         turnEndAngle = 0.0f;
@@ -358,12 +358,10 @@ RamView::ReadPath RamView::getReadPath(std::size_t index) const {
         junctionTurnCenter = {busCenterX, junctionCenterY};
         junctionTurnStartAngle = 0.0f;
         junctionTurnEndAngle = 0.0f;
-        junctionTurnExitPosition = {busObjectX - kCollectorTurnRadius,
-                                    junctionCenterY - CacheLineView::kHeight * 0.5f};
+        junctionTurnExitPosition = {busCenterX - kCollectorTurnRadius, junctionCenterY};
     }
 
-    const sf::Vector2f exitPosition{outputCenterX - CacheLineView::kWidth * 0.5f,
-                                    junctionCenterY - CacheLineView::kHeight * 0.5f};
+    const sf::Vector2f exitPosition{outputCenterX, junctionCenterY};
 
     return {sourcePosition,
             lanePosition,

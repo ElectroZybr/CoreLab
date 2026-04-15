@@ -45,6 +45,7 @@ class RamView : public sf::Drawable {
     [[nodiscard]] bool isInDragHandle(sf::Vector2f worldPoint) const;
     void setDragState(bool hovered, bool dragging);
     [[nodiscard]] sf::Vector2f getLinePosition(std::size_t index) const;
+    [[nodiscard]] sf::Vector2f getLineHeadCenter(std::size_t index) const;
     [[nodiscard]] ReadPath getReadPath(std::size_t index) const;
     [[nodiscard]] std::size_t getSizeInBytes() const {
         return m_sizeInBytes;

@@ -153,6 +153,28 @@ sf::Vector2f CacheView::getEntryPosition() const {
     return {portCenter.x - CacheLineView::kWidth * 0.5f, portCenter.y - CacheLineView::kHeight * 0.5f};
 }
 
+sf::Vector2f CacheView::getLineHeadCenter() const {
+    if (m_slotViews.empty()) {
+        return m_position;
+    }
+
+    return getLineHeadCenter(m_selectedSlotIndex);
+}
+
+sf::Vector2f CacheView::getLineHeadCenter(std::size_t slotIndex) const {
+    if (m_slotViews.empty()) {
+        return m_position;
+    }
+
+    const sf::Vector2f topLeft = m_slotViews[std::min(slotIndex, m_slotViews.size() - 1)].getPosition();
+    return {topLeft.x + CacheLineView::kHeight * 0.5f, topLeft.y + CacheLineView::kHeight * 0.5f};
+}
+
+sf::Vector2f CacheView::getEntryCenter() const {
+    const sf::FloatRect portBounds = m_inputPort.getGlobalBounds();
+    return {portBounds.position.x + portBounds.size.x * 0.5f, portBounds.position.y + portBounds.size.y * 0.5f};
+}
+
 void CacheView::setFont(const sf::Font* font) {
     m_font = font;
 
@@ -328,7 +350,7 @@ void CacheView::layout() {
     for (std::size_t index = 0; index < m_slotViews.size(); ++index) {
         const float slotCenterY = computeSlotCenterY(m_position, index);
         const float slotRightX = slotX + CacheLineView::kWidth;
-        const float lineCenterX = slotX + CacheLineView::kWidth * 0.5f;
+        const float lineEntryCenterX = slotX + CacheLineView::kHeight * 0.5f;
 
         rails::RailPath installPath(railStyle);
 
@@ -341,8 +363,8 @@ void CacheView::layout() {
             if (portCenterY < slotCenterY - 0.5f) {
                 installPath.appendStraight({collectorCenterX, portCenterY}, {collectorCenterX, slotCenterY});
             }
-            if (lineCenterX < collectorCenterX - 0.5f) {
-                installPath.appendStraight({collectorCenterX, slotCenterY}, {lineCenterX, slotCenterY});
+            if (lineEntryCenterX < collectorCenterX - 0.5f) {
+                installPath.appendStraight({collectorCenterX, slotCenterY}, {lineEntryCenterX, slotCenterY});
             }
         } else {
             m_railPaths.push_back(rails::RailBuilder::straight(
@@ -369,9 +391,9 @@ void CacheView::layout() {
                                   kCollectorTurnRadius,
                                   0.0f,
                                   std::numbers::pi_v<float> * 0.5f);
-            if (lineCenterX < collectorCenterX - kCollectorTurnRadius - 0.5f) {
+            if (lineEntryCenterX < collectorCenterX - kCollectorTurnRadius - 0.5f) {
                 installPath.appendStraight({collectorCenterX - kCollectorTurnRadius, slotCenterY},
-                                          {lineCenterX, slotCenterY});
+                                          {lineEntryCenterX, slotCenterY});
             }
         }
 

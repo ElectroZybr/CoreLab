@@ -26,6 +26,9 @@ class CacheView : public sf::Drawable {
     [[nodiscard]] sf::Vector2f getLinePosition() const;
     [[nodiscard]] sf::Vector2f getLinePosition(std::size_t slotIndex) const;
     [[nodiscard]] sf::Vector2f getEntryPosition() const;
+    [[nodiscard]] sf::Vector2f getLineHeadCenter() const;
+    [[nodiscard]] sf::Vector2f getLineHeadCenter(std::size_t slotIndex) const;
+    [[nodiscard]] sf::Vector2f getEntryCenter() const;
     [[nodiscard]] rails::RailDirection getEntryDirection() const {
         return rails::RailDirection::Down;
     }

@@ -158,16 +158,21 @@ BusView::BusView(float thickness, float turnRadius)
 }
 
 void BusView::setEndpoints(sf::Vector2f startTopLeft, sf::Vector2f endTopLeft) {
-    const sf::Vector2f startCenter = toCenter(startTopLeft);
-    const sf::Vector2f endCenter = toCenter(endTopLeft);
+    setCenterEndpoints(toCenter(startTopLeft), toCenter(endTopLeft));
+}
+
+void BusView::setCenterEndpoints(sf::Vector2f startCenter, sf::Vector2f endCenter) {
     m_path = buildBusPath(startCenter, endCenter, m_style, m_turnRadius);
     m_visible = !m_path.isEmpty();
 }
 
 void BusView::setEndpoints(
     sf::Vector2f startTopLeft, sf::Vector2f endTopLeft, rails::RailDirection endDirection) {
-    const sf::Vector2f startCenter = toCenter(startTopLeft);
-    const sf::Vector2f endCenter = toCenter(endTopLeft);
+    setCenterEndpoints(toCenter(startTopLeft), toCenter(endTopLeft), endDirection);
+}
+
+void BusView::setCenterEndpoints(
+    sf::Vector2f startCenter, sf::Vector2f endCenter, rails::RailDirection endDirection) {
     m_path = buildDirectedBusPath(startCenter, endCenter, endDirection, m_style, m_turnRadius);
     m_visible = !m_path.isEmpty();
 }

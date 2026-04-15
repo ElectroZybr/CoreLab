@@ -13,6 +13,9 @@ class BusView : public sf::Drawable {
     void setEndpoints(sf::Vector2f startTopLeft, sf::Vector2f endTopLeft);
     void setEndpoints(
         sf::Vector2f startTopLeft, sf::Vector2f endTopLeft, rails::RailDirection endDirection);
+    void setCenterEndpoints(sf::Vector2f startCenter, sf::Vector2f endCenter);
+    void setCenterEndpoints(
+        sf::Vector2f startCenter, sf::Vector2f endCenter, rails::RailDirection endDirection);
     void clear();
     [[nodiscard]] bool isVisible() const {
         return m_visible;
