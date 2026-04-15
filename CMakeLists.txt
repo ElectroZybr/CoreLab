@@ -50,6 +50,8 @@ add_executable(CoreLab
     view/CacheLineView.cpp
     view/CacheView.cpp
     view/CpuView.cpp
+    view/rails/RailBuilder.cpp
+    view/rails/RailPath.cpp
     view/rails/RailSegment.cpp
     view/RamView.cpp
     view/rails/StraightRailSegment.cpp

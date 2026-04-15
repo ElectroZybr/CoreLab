@@ -1,8 +1,7 @@
 #include "view/RamView.h"
 
 #include "sim/Math.h"
-#include "view/rails/ArcRailSegment.h"
-#include "view/rails/StraightRailSegment.h"
+#include "view/rails/RailBuilder.h"
 
 #include <algorithm>
 #include <array>
@@ -396,7 +395,9 @@ void RamView::layout() {
         return;
     }
 
-    m_railSegments.clear();
+    m_railPaths.clear();
+
+    const rails::RailStyle railStyle{kTrackThickness, kTrackColor};
 
     const std::size_t columns = std::min(m_slotCount, kMaxColumns);
     const std::size_t rows = math::ceilDiv(m_slotCount, columns);
@@ -434,23 +435,22 @@ void RamView::layout() {
 
             hasUpperRows = true;
 
-            m_railSegments.push_back(std::make_unique<rails::StraightRailSegment>(
-                sf::Vector2f{busCenterX + kCollectorTurnRadius, laneCenterY},
-                sf::Vector2f{laneEndX, laneCenterY},
-                kTrackThickness,
-                kTrackColor));
+            m_railPaths.push_back(
+                rails::RailBuilder::straight(sf::Vector2f{busCenterX + kCollectorTurnRadius, laneCenterY},
+                                             sf::Vector2f{laneEndX, laneCenterY},
+                                             railStyle));
 
-            m_railSegments.push_back(std::make_unique<rails::ArcRailSegment>(
+            rails::RailPath upperTurn(railStyle);
+            upperTurn.appendArc(
                 sf::Vector2f{busCenterX + kCollectorTurnRadius, laneCenterY + kCollectorTurnRadius},
                 kCollectorTurnRadius,
                 -std::numbers::pi_v<float> * 0.5f,
-                isNearestUpper ? upperTangent->rowAngle : -std::numbers::pi_v<float>,
-                kTrackThickness,
-                kTrackColor));
+                isNearestUpper ? upperTangent->rowAngle : -std::numbers::pi_v<float>);
+            m_railPaths.push_back(std::move(upperTurn));
 
             if (isNearestUpper) {
-                m_railSegments.push_back(std::make_unique<rails::StraightRailSegment>(
-                    upperTangent->rowPoint, upperTangent->outputPoint, kTrackThickness, kTrackColor));
+                m_railPaths.push_back(rails::RailBuilder::straight(
+                    upperTangent->rowPoint, upperTangent->outputPoint, railStyle));
             } else {
                 hasFarUpperRows = true;
                 upperCollectorMinY = std::min(upperCollectorMinY, turnExitCenterY);
@@ -461,33 +461,29 @@ void RamView::layout() {
 
             hasLowerRows = true;
 
-            m_railSegments.push_back(std::make_unique<rails::StraightRailSegment>(
-                sf::Vector2f{busCenterX + kCollectorTurnRadius, laneCenterY},
-                sf::Vector2f{laneEndX, laneCenterY},
-                kTrackThickness,
-                kTrackColor));
+            m_railPaths.push_back(
+                rails::RailBuilder::straight(sf::Vector2f{busCenterX + kCollectorTurnRadius, laneCenterY},
+                                             sf::Vector2f{laneEndX, laneCenterY},
+                                             railStyle));
 
-            m_railSegments.push_back(std::make_unique<rails::ArcRailSegment>(
+            rails::RailPath lowerTurn(railStyle);
+            lowerTurn.appendArc(
                 sf::Vector2f{busCenterX + kCollectorTurnRadius, laneCenterY - kCollectorTurnRadius},
                 kCollectorTurnRadius,
                 std::numbers::pi_v<float> * 0.5f,
-                isNearestLower ? lowerTangent->rowAngle : std::numbers::pi_v<float>,
-                kTrackThickness,
-                kTrackColor));
+                isNearestLower ? lowerTangent->rowAngle : std::numbers::pi_v<float>);
+            m_railPaths.push_back(std::move(lowerTurn));
 
             if (isNearestLower) {
-                m_railSegments.push_back(std::make_unique<rails::StraightRailSegment>(
-                    lowerTangent->rowPoint, lowerTangent->outputPoint, kTrackThickness, kTrackColor));
+                m_railPaths.push_back(rails::RailBuilder::straight(
+                    lowerTangent->rowPoint, lowerTangent->outputPoint, railStyle));
             } else {
                 hasFarLowerRows = true;
                 lowerCollectorMaxY = std::max(lowerCollectorMaxY, turnExitCenterY);
             }
         } else {
-            m_railSegments.push_back(
-                std::make_unique<rails::StraightRailSegment>(sf::Vector2f{busCenterX, laneCenterY},
-                                                             sf::Vector2f{laneEndX, laneCenterY},
-                                                             kTrackThickness,
-                                                             kTrackColor));
+            m_railPaths.push_back(rails::RailBuilder::straight(
+                sf::Vector2f{busCenterX, laneCenterY}, sf::Vector2f{laneEndX, laneCenterY}, railStyle));
         }
     }
 
@@ -495,48 +491,42 @@ void RamView::layout() {
         const float upperCollectorEndY = junctionCenterY - kCollectorTurnRadius;
 
         if (hasFarUpperRows && upperCollectorMinY < upperCollectorEndY - 0.5f) {
-            m_railSegments.push_back(
-                std::make_unique<rails::StraightRailSegment>(sf::Vector2f{busCenterX, upperCollectorMinY},
-                                                             sf::Vector2f{busCenterX, upperCollectorEndY},
-                                                             kTrackThickness,
-                                                             kTrackColor));
+            m_railPaths.push_back(rails::RailBuilder::straight(sf::Vector2f{busCenterX, upperCollectorMinY},
+                                                               sf::Vector2f{busCenterX, upperCollectorEndY},
+                                                               railStyle));
         }
 
-        m_railSegments.push_back(std::make_unique<rails::ArcRailSegment>(
+        rails::RailPath upperExit(railStyle);
+        upperExit.appendArc(
             sf::Vector2f{busCenterX - kCollectorTurnRadius, junctionCenterY - kCollectorTurnRadius},
             kCollectorTurnRadius,
             0.0f,
-            std::numbers::pi_v<float> * 0.5f,
-            kTrackThickness,
-            kTrackColor));
+            std::numbers::pi_v<float> * 0.5f);
+        m_railPaths.push_back(std::move(upperExit));
     }
 
     if (hasLowerRows) {
         const float lowerCollectorStartY = junctionCenterY + kCollectorTurnRadius;
 
         if (hasFarLowerRows && lowerCollectorStartY < lowerCollectorMaxY - 0.5f) {
-            m_railSegments.push_back(
-                std::make_unique<rails::StraightRailSegment>(sf::Vector2f{busCenterX, lowerCollectorStartY},
-                                                             sf::Vector2f{busCenterX, lowerCollectorMaxY},
-                                                             kTrackThickness,
-                                                             kTrackColor));
+            m_railPaths.push_back(rails::RailBuilder::straight(sf::Vector2f{busCenterX, lowerCollectorStartY},
+                                                               sf::Vector2f{busCenterX, lowerCollectorMaxY},
+                                                               railStyle));
         }
 
-        m_railSegments.push_back(std::make_unique<rails::ArcRailSegment>(
+        rails::RailPath lowerExit(railStyle);
+        lowerExit.appendArc(
             sf::Vector2f{busCenterX - kCollectorTurnRadius, junctionCenterY + kCollectorTurnRadius},
             kCollectorTurnRadius,
             0.0f,
-            -std::numbers::pi_v<float> * 0.5f,
-            kTrackThickness,
-            kTrackColor));
+            -std::numbers::pi_v<float> * 0.5f);
+        m_railPaths.push_back(std::move(lowerExit));
     }
 
     const float outputStartX = busCenterX - kCollectorTurnRadius;
-    m_railSegments.push_back(
-        std::make_unique<rails::StraightRailSegment>(sf::Vector2f{outputCenterX, junctionCenterY},
-                                                     sf::Vector2f{outputStartX, junctionCenterY},
-                                                     kTrackThickness,
-                                                     kTrackColor));
+    m_railPaths.push_back(rails::RailBuilder::straight(sf::Vector2f{outputCenterX, junctionCenterY},
+                                                       sf::Vector2f{outputStartX, junctionCenterY},
+                                                       railStyle));
 
     for (std::size_t index = 0; index < m_lines.size(); ++index) {
         const std::size_t row = index / columns;
@@ -549,19 +539,18 @@ void RamView::layout() {
 
         m_lines[index].setPosition({x, y});
 
-        m_railSegments.push_back(std::make_unique<rails::StraightRailSegment>(
-            sf::Vector2f{x + kSlotSize.x * 0.5f, y + kSlotSize.y},
-            sf::Vector2f{x + kSlotSize.x * 0.5f, laneCenterY},
-            kTrackThickness,
-            kTrackColor));
+        m_railPaths.push_back(
+            rails::RailBuilder::straight(sf::Vector2f{x + kSlotSize.x * 0.5f, y + kSlotSize.y},
+                                         sf::Vector2f{x + kSlotSize.x * 0.5f, laneCenterY},
+                                         railStyle));
     }
 }
 
 void RamView::draw(sf::RenderTarget& target, sf::RenderStates states) const {
     target.draw(m_container, states);
 
-    for (const std::unique_ptr<rails::RailSegment>& segment : m_railSegments) {
-        target.draw(*segment, states);
+    for (const rails::RailPath& path : m_railPaths) {
+        target.draw(path, states);
     }
 
     for (const CacheLineView& line : m_lines) {

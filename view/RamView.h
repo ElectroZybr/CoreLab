@@ -8,7 +8,7 @@
 #include <vector>
 
 #include "view/CacheLineView.h"
-#include "view/rails/RailSegment.h"
+#include "view/rails/RailPath.h"
 
 namespace view {
 class RamView : public sf::Drawable {
@@ -64,7 +64,7 @@ class RamView : public sf::Drawable {
     sf::Vector2f m_position{0.0f, 0.0f};
     sf::Vector2f m_size{0.0f, 0.0f};
     sf::ConvexShape m_container;
-    std::vector<std::unique_ptr<rails::RailSegment>> m_railSegments;
+    std::vector<rails::RailPath> m_railPaths;
     std::vector<CacheLineView> m_lines;
     std::optional<sf::Text> m_titleText;
 };
