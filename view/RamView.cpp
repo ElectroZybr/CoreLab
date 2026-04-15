@@ -1,11 +1,16 @@
 #include "view/RamView.h"
 
 #include "sim/Math.h"
+#include "view/rails/ArcRailSegment.h"
+#include "view/rails/StraightRailSegment.h"
 
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <limits>
+#include <memory>
 #include <numbers>
+#include <optional>
 #include <string>
 
 namespace {
@@ -24,21 +29,18 @@ constexpr float kSlotsTopOffset = 74.0f;
 constexpr float kMinimumWidth = 320.0f;
 constexpr std::size_t kMaxColumns = 8;
 constexpr float kTrackThickness = 6.0f;
-constexpr float kTrackTurnRadius = 200.0f;
-constexpr std::size_t kTrackTurnSegments = 10;
-constexpr float kInputTrackInsetX = 0.0f;
-constexpr std::size_t kMergeTrackSegments = 28;
+constexpr float kCollectorTurnRadius = 84.0f;
+constexpr float kOutputTrackOutsetX = 80.0f;
 const sf::Color kTrackColor(116, 134, 165);
 
-sf::Vector2f normalizeOrZero(sf::Vector2f vector) {
-    const float lengthSquared = vector.x * vector.x + vector.y * vector.y;
-    if (lengthSquared <= 0.0f) {
-        return {0.0f, 0.0f};
-    }
-
-    const float invLength = 1.0f / std::sqrt(lengthSquared);
-    return {vector.x * invLength, vector.y * invLength};
-}
+struct TangentBridge {
+    bool valid = false;
+    std::size_t row = 0;
+    sf::Vector2f rowPoint{0.0f, 0.0f};
+    float rowAngle = 0.0f;
+    sf::Vector2f outputPoint{0.0f, 0.0f};
+    float outputAngle = 0.0f;
+};
 
 void buildRoundedRect(sf::ConvexShape& shape, sf::Vector2f size, float radius) {
     constexpr float halfPi = std::numbers::pi_v<float> * 0.5f;
@@ -83,64 +85,115 @@ float computeLaneTop(float rowY) {
     return rowY + kSlotSize.y + (kRowGap - kSlotSize.y) * 0.5f;
 }
 
-sf::VertexArray buildTrackBend(
-    sf::Vector2f center, float radius, float thickness, float startAngle, float endAngle, sf::Color color) {
-    sf::VertexArray bend(sf::PrimitiveType::TriangleStrip);
-
-    const float innerRadius = radius - thickness * 0.5f;
-    const float outerRadius = radius + thickness * 0.5f;
-
-    for (std::size_t step = 0; step <= kTrackTurnSegments; ++step) {
-        const float t = static_cast<float>(step) / static_cast<float>(kTrackTurnSegments);
-        const float angle = startAngle + (endAngle - startAngle) * t;
-        const float cosine = std::cos(angle);
-        const float sine = std::sin(angle);
-
-        bend.append(sf::Vertex({center.x + cosine * outerRadius, center.y + sine * outerRadius}, color));
-        bend.append(sf::Vertex({center.x + cosine * innerRadius, center.y + sine * innerRadius}, color));
-    }
-
-    return bend;
+float computeLaneCenterY(sf::Vector2f position, std::size_t row) {
+    const float rowY = position.y + kSlotsTopOffset + static_cast<float>(row) * (kSlotSize.y + kRowGap);
+    return computeLaneTop(rowY) + kSlotSize.y * 0.5f;
 }
 
-sf::Vector2f cubicBezier(sf::Vector2f p0, sf::Vector2f p1, sf::Vector2f p2, sf::Vector2f p3, float t) {
-    const float u = 1.0f - t;
-    const float uu = u * u;
-    const float tt = t * t;
-
-    return p0 * (uu * u) + p1 * (3.0f * uu * t) + p2 * (3.0f * u * tt) + p3 * (tt * t);
+bool isAngleInsideArc(float angle, float startAngle, float endAngle) {
+    const float minAngle = std::min(startAngle, endAngle) - 0.001f;
+    const float maxAngle = std::max(startAngle, endAngle) + 0.001f;
+    return angle >= minAngle && angle <= maxAngle;
 }
 
-sf::Vector2f toTrackCenter(sf::Vector2f topLeft) {
-    return {topLeft.x + view::CacheLineView::kWidth * 0.5f, topLeft.y + view::CacheLineView::kHeight * 0.5f};
-}
+std::optional<TangentBridge>
+findNearestUpperTangent(sf::Vector2f position, std::size_t rows, float busCenterX, float junctionCenterY) {
+    float bestDistance = std::numeric_limits<float>::max();
+    std::optional<std::size_t> bestRow;
 
-sf::VertexArray buildMergeTrack(
-    sf::Vector2f p0, sf::Vector2f p1, sf::Vector2f p2, sf::Vector2f p3, float thickness, sf::Color color) {
-    sf::VertexArray strip(sf::PrimitiveType::TriangleStrip);
-    std::array<sf::Vector2f, kMergeTrackSegments + 1> points{};
-
-    for (std::size_t index = 0; index < points.size(); ++index) {
-        const float t = static_cast<float>(index) / static_cast<float>(points.size() - 1);
-        points[index] = cubicBezier(p0, p1, p2, p3, t);
-    }
-
-    for (std::size_t index = 0; index < points.size(); ++index) {
-        sf::Vector2f tangent{0.0f, 0.0f};
-        if (index == 0) {
-            tangent = points[1] - points[0];
-        } else if (index + 1 == points.size()) {
-            tangent = points[index] - points[index - 1];
-        } else {
-            tangent = points[index + 1] - points[index - 1];
+    for (std::size_t row = 0; row < rows; ++row) {
+        const float laneCenterY = computeLaneCenterY(position, row);
+        const float distanceToCenter = junctionCenterY - laneCenterY;
+        if (distanceToCenter > 0.5f && distanceToCenter < bestDistance) {
+            bestDistance = distanceToCenter;
+            bestRow = row;
         }
-
-        const sf::Vector2f normal = normalizeOrZero({-tangent.y, tangent.x}) * (thickness * 0.5f);
-        strip.append(sf::Vertex(points[index] + normal, color));
-        strip.append(sf::Vertex(points[index] - normal, color));
     }
 
-    return strip;
+    if (!bestRow) {
+        return std::nullopt;
+    }
+
+    const float laneCenterY = computeLaneCenterY(position, *bestRow);
+    const sf::Vector2f rowCenter{busCenterX + kCollectorTurnRadius, laneCenterY + kCollectorTurnRadius};
+    const sf::Vector2f outputCenter{busCenterX - kCollectorTurnRadius,
+                                    junctionCenterY - kCollectorTurnRadius};
+    const sf::Vector2f delta = outputCenter - rowCenter;
+    const float distanceSquared = delta.x * delta.x + delta.y * delta.y;
+    const float radiusDelta = kCollectorTurnRadius - (-kCollectorTurnRadius);
+    const float tangentSquared = distanceSquared - radiusDelta * radiusDelta;
+    if (tangentSquared <= 0.0f) {
+        return std::nullopt;
+    }
+
+    const sf::Vector2f perpendicular{-delta.y, delta.x};
+
+    for (float sign : {1.0f, -1.0f}) {
+        const sf::Vector2f normal =
+            (delta * radiusDelta + perpendicular * std::sqrt(tangentSquared) * sign) / distanceSquared;
+        const sf::Vector2f rowPoint = rowCenter + normal * kCollectorTurnRadius;
+        const sf::Vector2f outputPoint = outputCenter - normal * kCollectorTurnRadius;
+        const float rowAngle = std::atan2(normal.y, normal.x);
+        const float outputAngle = std::atan2(-normal.y, -normal.x);
+
+        if (isAngleInsideArc(rowAngle, -std::numbers::pi_v<float>, -std::numbers::pi_v<float> * 0.5f) &&
+            isAngleInsideArc(outputAngle, 0.0f, std::numbers::pi_v<float> * 0.5f) &&
+            outputPoint.x < rowPoint.x && outputPoint.y > rowPoint.y) {
+            return TangentBridge{true, *bestRow, rowPoint, rowAngle, outputPoint, outputAngle};
+        }
+    }
+
+    return std::nullopt;
+}
+
+std::optional<TangentBridge>
+findNearestLowerTangent(sf::Vector2f position, std::size_t rows, float busCenterX, float junctionCenterY) {
+    float bestDistance = std::numeric_limits<float>::max();
+    std::optional<std::size_t> bestRow;
+
+    for (std::size_t row = 0; row < rows; ++row) {
+        const float laneCenterY = computeLaneCenterY(position, row);
+        const float distanceToCenter = laneCenterY - junctionCenterY;
+        if (distanceToCenter > 0.5f && distanceToCenter < bestDistance) {
+            bestDistance = distanceToCenter;
+            bestRow = row;
+        }
+    }
+
+    if (!bestRow) {
+        return std::nullopt;
+    }
+
+    const float laneCenterY = computeLaneCenterY(position, *bestRow);
+    const sf::Vector2f rowCenter{busCenterX + kCollectorTurnRadius, laneCenterY - kCollectorTurnRadius};
+    const sf::Vector2f outputCenter{busCenterX - kCollectorTurnRadius,
+                                    junctionCenterY + kCollectorTurnRadius};
+    const sf::Vector2f delta = outputCenter - rowCenter;
+    const float distanceSquared = delta.x * delta.x + delta.y * delta.y;
+    const float radiusDelta = kCollectorTurnRadius - (-kCollectorTurnRadius);
+    const float tangentSquared = distanceSquared - radiusDelta * radiusDelta;
+    if (tangentSquared <= 0.0f) {
+        return std::nullopt;
+    }
+
+    const sf::Vector2f perpendicular{-delta.y, delta.x};
+
+    for (float sign : {1.0f, -1.0f}) {
+        const sf::Vector2f normal =
+            (delta * radiusDelta + perpendicular * std::sqrt(tangentSquared) * sign) / distanceSquared;
+        const sf::Vector2f rowPoint = rowCenter + normal * kCollectorTurnRadius;
+        const sf::Vector2f outputPoint = outputCenter - normal * kCollectorTurnRadius;
+        const float rowAngle = std::atan2(normal.y, normal.x);
+        const float outputAngle = std::atan2(-normal.y, -normal.x);
+
+        if (isAngleInsideArc(rowAngle, std::numbers::pi_v<float> * 0.5f, std::numbers::pi_v<float>) &&
+            isAngleInsideArc(outputAngle, -std::numbers::pi_v<float> * 0.5f, 0.0f) &&
+            outputPoint.x < rowPoint.x && outputPoint.y < rowPoint.y) {
+            return TangentBridge{true, *bestRow, rowPoint, rowAngle, outputPoint, outputAngle};
+        }
+    }
+
+    return std::nullopt;
 }
 } // namespace
 
@@ -173,45 +226,124 @@ RamView::ReadPath RamView::getReadPath(std::size_t index) const {
                 m_position,
                 m_position,
                 0.0f,
+                0.0f,
+                0.0f,
                 m_position,
                 m_position,
+                m_position,
+                0.0f,
+                0.0f,
+                0.0f,
                 m_position,
                 m_position};
     }
 
     const std::size_t columns = std::min(m_slotCount, kMaxColumns);
     const std::size_t rows = math::ceilDiv(m_slotCount, columns);
+    const std::size_t row = index / columns;
     const sf::Vector2f sourcePosition = m_lines[index].getPosition();
     const sf::Vector2f lanePosition{sourcePosition.x, computeLaneTop(sourcePosition.y)};
-    const float busObjectX = m_position.x + kBusObjectInsetX;
     const float laneCenterY = lanePosition.y + CacheLineView::kHeight * 0.5f;
+    const float busObjectX = m_position.x + kBusObjectInsetX;
+    const float busCenterX = busObjectX + CacheLineView::kWidth * 0.5f;
+    const float outputCenterX = m_position.x - kOutputTrackOutsetX;
     const float firstLaneCenterY =
         m_position.y + kSlotsTopOffset + kSlotSize.y + (kRowGap - kSlotSize.y) * 0.5f + kSlotSize.y * 0.5f;
     const float lastLaneCenterY = m_position.y + kSlotsTopOffset +
                                   static_cast<float>(rows - 1) * (kSlotSize.y + kRowGap) + kSlotSize.y +
                                   (kRowGap - kSlotSize.y) * 0.5f + kSlotSize.y * 0.5f;
     const float junctionCenterY = (firstLaneCenterY + lastLaneCenterY) * 0.5f;
-    const float outputCenterX = m_position.x + kInputTrackInsetX;
-    const sf::Vector2f turnEntryPosition{busObjectX + kTrackTurnRadius, lanePosition.y};
-    const sf::Vector2f turnCenter{busObjectX + CacheLineView::kWidth * 0.5f + kTrackTurnRadius,
-                                  laneCenterY - kTrackTurnRadius};
-    const sf::Vector2f turnExitPosition{busObjectX, lanePosition.y - kTrackTurnRadius};
+    const std::optional<TangentBridge> upperTangent =
+        findNearestUpperTangent(m_position, rows, busCenterX, junctionCenterY);
+    const std::optional<TangentBridge> lowerTangent =
+        findNearestLowerTangent(m_position, rows, busCenterX, junctionCenterY);
+    sf::Vector2f turnEntryPosition{busObjectX + kCollectorTurnRadius, lanePosition.y};
+    sf::Vector2f turnCenter{busCenterX + kCollectorTurnRadius, laneCenterY - kCollectorTurnRadius};
+    float turnStartAngle = std::numbers::pi_v<float> * 0.5f;
+    float turnEndAngle = std::numbers::pi_v<float>;
+    sf::Vector2f turnExitPosition{busObjectX, lanePosition.y - kCollectorTurnRadius};
+    sf::Vector2f collectorPosition{busObjectX,
+                                   junctionCenterY + kCollectorTurnRadius - CacheLineView::kHeight * 0.5f};
+    sf::Vector2f junctionTurnCenter{busCenterX - kCollectorTurnRadius,
+                                    junctionCenterY + kCollectorTurnRadius};
+    float junctionTurnStartAngle = 0.0f;
+    float junctionTurnEndAngle = -std::numbers::pi_v<float> * 0.5f;
+    sf::Vector2f junctionTurnExitPosition{busObjectX - kCollectorTurnRadius,
+                                          junctionCenterY - CacheLineView::kHeight * 0.5f};
+
+    if (laneCenterY < junctionCenterY - 0.5f) {
+        const bool isNearestUpper = upperTangent && upperTangent->row == row;
+
+        turnCenter = {busCenterX + kCollectorTurnRadius, laneCenterY + kCollectorTurnRadius};
+        turnStartAngle = -std::numbers::pi_v<float> * 0.5f;
+        turnEndAngle = isNearestUpper ? upperTangent->rowAngle : -std::numbers::pi_v<float>;
+        turnExitPosition = isNearestUpper
+                               ? sf::Vector2f{upperTangent->rowPoint.x - CacheLineView::kWidth * 0.5f,
+                                              upperTangent->rowPoint.y - CacheLineView::kHeight * 0.5f}
+                               : sf::Vector2f{busObjectX, lanePosition.y + kCollectorTurnRadius};
+        collectorPosition =
+            isNearestUpper
+                ? sf::Vector2f{upperTangent->outputPoint.x - CacheLineView::kWidth * 0.5f,
+                               upperTangent->outputPoint.y - CacheLineView::kHeight * 0.5f}
+                : sf::Vector2f{busObjectX,
+                               junctionCenterY - kCollectorTurnRadius - CacheLineView::kHeight * 0.5f};
+        junctionTurnCenter = {busCenterX - kCollectorTurnRadius, junctionCenterY - kCollectorTurnRadius};
+        junctionTurnStartAngle = isNearestUpper ? upperTangent->outputAngle : 0.0f;
+        junctionTurnEndAngle = std::numbers::pi_v<float> * 0.5f;
+        junctionTurnExitPosition = {busObjectX - kCollectorTurnRadius,
+                                    junctionCenterY - CacheLineView::kHeight * 0.5f};
+    } else if (laneCenterY > junctionCenterY + 0.5f) {
+        const bool isNearestLower = lowerTangent && lowerTangent->row == row;
+
+        turnCenter = {busCenterX + kCollectorTurnRadius, laneCenterY - kCollectorTurnRadius};
+        turnStartAngle = std::numbers::pi_v<float> * 0.5f;
+        turnEndAngle = isNearestLower ? lowerTangent->rowAngle : std::numbers::pi_v<float>;
+        turnExitPosition = isNearestLower
+                               ? sf::Vector2f{lowerTangent->rowPoint.x - CacheLineView::kWidth * 0.5f,
+                                              lowerTangent->rowPoint.y - CacheLineView::kHeight * 0.5f}
+                               : sf::Vector2f{busObjectX, lanePosition.y - kCollectorTurnRadius};
+        collectorPosition =
+            isNearestLower
+                ? sf::Vector2f{lowerTangent->outputPoint.x - CacheLineView::kWidth * 0.5f,
+                               lowerTangent->outputPoint.y - CacheLineView::kHeight * 0.5f}
+                : sf::Vector2f{busObjectX,
+                               junctionCenterY + kCollectorTurnRadius - CacheLineView::kHeight * 0.5f};
+        junctionTurnCenter = {busCenterX - kCollectorTurnRadius, junctionCenterY + kCollectorTurnRadius};
+        junctionTurnStartAngle = isNearestLower ? lowerTangent->outputAngle : 0.0f;
+        junctionTurnEndAngle = -std::numbers::pi_v<float> * 0.5f;
+        junctionTurnExitPosition = {busObjectX - kCollectorTurnRadius,
+                                    junctionCenterY - CacheLineView::kHeight * 0.5f};
+    } else {
+        turnEntryPosition = {busObjectX, lanePosition.y};
+        turnCenter = {busCenterX, laneCenterY};
+        turnStartAngle = 0.0f;
+        turnEndAngle = 0.0f;
+        turnExitPosition = turnEntryPosition;
+        collectorPosition = turnEntryPosition;
+        junctionTurnCenter = {busCenterX, junctionCenterY};
+        junctionTurnStartAngle = 0.0f;
+        junctionTurnEndAngle = 0.0f;
+        junctionTurnExitPosition = {busObjectX - kCollectorTurnRadius,
+                                    junctionCenterY - CacheLineView::kHeight * 0.5f};
+    }
+
     const sf::Vector2f exitPosition{outputCenterX - CacheLineView::kWidth * 0.5f,
                                     junctionCenterY - CacheLineView::kHeight * 0.5f};
-    const sf::Vector2f exitCurveControl1{turnExitPosition.x,
-                                         turnExitPosition.y + (exitPosition.y - turnExitPosition.y) * 0.45f};
-    const float controlOffsetX =
-        std::max(kTrackTurnRadius * 0.9f, (turnExitPosition.x - exitPosition.x) * 0.35f);
-    const sf::Vector2f exitCurveControl2{exitPosition.x + controlOffsetX, exitPosition.y};
 
     return {sourcePosition,
             lanePosition,
             turnEntryPosition,
             turnCenter,
-            kTrackTurnRadius,
+            kCollectorTurnRadius,
+            turnStartAngle,
+            turnEndAngle,
             turnExitPosition,
-            exitCurveControl1,
-            exitCurveControl2,
+            collectorPosition,
+            junctionTurnCenter,
+            kCollectorTurnRadius,
+            junctionTurnStartAngle,
+            junctionTurnEndAngle,
+            junctionTurnExitPosition,
             exitPosition};
 }
 
@@ -264,35 +396,29 @@ void RamView::layout() {
         return;
     }
 
-    m_tracks.clear();
-    m_trackBends.clear();
-    m_mergeTracks.clear();
+    m_railSegments.clear();
 
     const std::size_t columns = std::min(m_slotCount, kMaxColumns);
     const std::size_t rows = math::ceilDiv(m_slotCount, columns);
     const float busObjectX = m_position.x + kBusObjectInsetX;
     const float busCenterX = busObjectX + CacheLineView::kWidth * 0.5f;
-    const float outputCenterX = m_position.x + kInputTrackInsetX;
+    const float outputCenterX = m_position.x - kOutputTrackOutsetX;
     const float firstLaneCenterY =
         m_position.y + kSlotsTopOffset + kSlotSize.y + (kRowGap - kSlotSize.y) * 0.5f + kSlotSize.y * 0.5f;
     const float lastLaneCenterY = m_position.y + kSlotsTopOffset +
                                   static_cast<float>(rows - 1) * (kSlotSize.y + kRowGap) + kSlotSize.y +
                                   (kRowGap - kSlotSize.y) * 0.5f + kSlotSize.y * 0.5f;
     const float junctionCenterY = (firstLaneCenterY + lastLaneCenterY) * 0.5f;
-    const float topTurnExitCenterY = firstLaneCenterY - kTrackTurnRadius;
-    const float bottomTurnExitCenterY = lastLaneCenterY - kTrackTurnRadius;
-
-    sf::RectangleShape busTrack;
-    busTrack.setPosition({busCenterX - kTrackThickness * 0.5f, topTurnExitCenterY});
-    busTrack.setSize({kTrackThickness, bottomTurnExitCenterY - topTurnExitCenterY});
-    busTrack.setFillColor(kTrackColor);
-    m_tracks.push_back(busTrack);
-
-    sf::RectangleShape inputTrack;
-    inputTrack.setPosition({outputCenterX, junctionCenterY - kTrackThickness * 0.5f});
-    inputTrack.setSize({busCenterX - outputCenterX, kTrackThickness});
-    inputTrack.setFillColor(kTrackColor);
-    m_tracks.push_back(inputTrack);
+    const std::optional<TangentBridge> upperTangent =
+        findNearestUpperTangent(m_position, rows, busCenterX, junctionCenterY);
+    const std::optional<TangentBridge> lowerTangent =
+        findNearestLowerTangent(m_position, rows, busCenterX, junctionCenterY);
+    float upperCollectorMinY = std::numeric_limits<float>::max();
+    float lowerCollectorMaxY = -std::numeric_limits<float>::max();
+    bool hasUpperRows = false;
+    bool hasLowerRows = false;
+    bool hasFarUpperRows = false;
+    bool hasFarLowerRows = false;
 
     for (std::size_t row = 0; row < rows; ++row) {
         const float rowY = m_position.y + kSlotsTopOffset + static_cast<float>(row) * (kSlotSize.y + kRowGap);
@@ -302,19 +428,115 @@ void RamView::layout() {
                                static_cast<float>(columns - 1) * (kSlotSize.x + kColumnGap) +
                                kSlotSize.x * 0.5f;
 
-        sf::RectangleShape horizontalTrack;
-        horizontalTrack.setPosition({busCenterX + kTrackTurnRadius, laneCenterY - kTrackThickness * 0.5f});
-        horizontalTrack.setSize({laneEndX - (busCenterX + kTrackTurnRadius), kTrackThickness});
-        horizontalTrack.setFillColor(kTrackColor);
-        m_tracks.push_back(horizontalTrack);
+        if (laneCenterY < junctionCenterY - 0.5f) {
+            const float turnExitCenterY = laneCenterY + kCollectorTurnRadius;
+            const bool isNearestUpper = upperTangent && upperTangent->row == row;
 
-        m_trackBends.push_back(buildTrackBend({busCenterX + kTrackTurnRadius, laneCenterY - kTrackTurnRadius},
-                                              kTrackTurnRadius,
-                                              kTrackThickness,
-                                              std::numbers::pi_v<float> * 0.5f,
-                                              std::numbers::pi_v<float>,
-                                              kTrackColor));
+            hasUpperRows = true;
+
+            m_railSegments.push_back(std::make_unique<rails::StraightRailSegment>(
+                sf::Vector2f{busCenterX + kCollectorTurnRadius, laneCenterY},
+                sf::Vector2f{laneEndX, laneCenterY},
+                kTrackThickness,
+                kTrackColor));
+
+            m_railSegments.push_back(std::make_unique<rails::ArcRailSegment>(
+                sf::Vector2f{busCenterX + kCollectorTurnRadius, laneCenterY + kCollectorTurnRadius},
+                kCollectorTurnRadius,
+                -std::numbers::pi_v<float> * 0.5f,
+                isNearestUpper ? upperTangent->rowAngle : -std::numbers::pi_v<float>,
+                kTrackThickness,
+                kTrackColor));
+
+            if (isNearestUpper) {
+                m_railSegments.push_back(std::make_unique<rails::StraightRailSegment>(
+                    upperTangent->rowPoint, upperTangent->outputPoint, kTrackThickness, kTrackColor));
+            } else {
+                hasFarUpperRows = true;
+                upperCollectorMinY = std::min(upperCollectorMinY, turnExitCenterY);
+            }
+        } else if (laneCenterY > junctionCenterY + 0.5f) {
+            const float turnExitCenterY = laneCenterY - kCollectorTurnRadius;
+            const bool isNearestLower = lowerTangent && lowerTangent->row == row;
+
+            hasLowerRows = true;
+
+            m_railSegments.push_back(std::make_unique<rails::StraightRailSegment>(
+                sf::Vector2f{busCenterX + kCollectorTurnRadius, laneCenterY},
+                sf::Vector2f{laneEndX, laneCenterY},
+                kTrackThickness,
+                kTrackColor));
+
+            m_railSegments.push_back(std::make_unique<rails::ArcRailSegment>(
+                sf::Vector2f{busCenterX + kCollectorTurnRadius, laneCenterY - kCollectorTurnRadius},
+                kCollectorTurnRadius,
+                std::numbers::pi_v<float> * 0.5f,
+                isNearestLower ? lowerTangent->rowAngle : std::numbers::pi_v<float>,
+                kTrackThickness,
+                kTrackColor));
+
+            if (isNearestLower) {
+                m_railSegments.push_back(std::make_unique<rails::StraightRailSegment>(
+                    lowerTangent->rowPoint, lowerTangent->outputPoint, kTrackThickness, kTrackColor));
+            } else {
+                hasFarLowerRows = true;
+                lowerCollectorMaxY = std::max(lowerCollectorMaxY, turnExitCenterY);
+            }
+        } else {
+            m_railSegments.push_back(
+                std::make_unique<rails::StraightRailSegment>(sf::Vector2f{busCenterX, laneCenterY},
+                                                             sf::Vector2f{laneEndX, laneCenterY},
+                                                             kTrackThickness,
+                                                             kTrackColor));
+        }
     }
+
+    if (hasUpperRows) {
+        const float upperCollectorEndY = junctionCenterY - kCollectorTurnRadius;
+
+        if (hasFarUpperRows && upperCollectorMinY < upperCollectorEndY - 0.5f) {
+            m_railSegments.push_back(
+                std::make_unique<rails::StraightRailSegment>(sf::Vector2f{busCenterX, upperCollectorMinY},
+                                                             sf::Vector2f{busCenterX, upperCollectorEndY},
+                                                             kTrackThickness,
+                                                             kTrackColor));
+        }
+
+        m_railSegments.push_back(std::make_unique<rails::ArcRailSegment>(
+            sf::Vector2f{busCenterX - kCollectorTurnRadius, junctionCenterY - kCollectorTurnRadius},
+            kCollectorTurnRadius,
+            0.0f,
+            std::numbers::pi_v<float> * 0.5f,
+            kTrackThickness,
+            kTrackColor));
+    }
+
+    if (hasLowerRows) {
+        const float lowerCollectorStartY = junctionCenterY + kCollectorTurnRadius;
+
+        if (hasFarLowerRows && lowerCollectorStartY < lowerCollectorMaxY - 0.5f) {
+            m_railSegments.push_back(
+                std::make_unique<rails::StraightRailSegment>(sf::Vector2f{busCenterX, lowerCollectorStartY},
+                                                             sf::Vector2f{busCenterX, lowerCollectorMaxY},
+                                                             kTrackThickness,
+                                                             kTrackColor));
+        }
+
+        m_railSegments.push_back(std::make_unique<rails::ArcRailSegment>(
+            sf::Vector2f{busCenterX - kCollectorTurnRadius, junctionCenterY + kCollectorTurnRadius},
+            kCollectorTurnRadius,
+            0.0f,
+            -std::numbers::pi_v<float> * 0.5f,
+            kTrackThickness,
+            kTrackColor));
+    }
+
+    const float outputStartX = busCenterX - kCollectorTurnRadius;
+    m_railSegments.push_back(
+        std::make_unique<rails::StraightRailSegment>(sf::Vector2f{outputCenterX, junctionCenterY},
+                                                     sf::Vector2f{outputStartX, junctionCenterY},
+                                                     kTrackThickness,
+                                                     kTrackColor));
 
     for (std::size_t index = 0; index < m_lines.size(); ++index) {
         const std::size_t row = index / columns;
@@ -324,45 +546,22 @@ void RamView::layout() {
         const float y = m_position.y + kSlotsTopOffset + static_cast<float>(row) * (kSlotSize.y + kRowGap);
         const float laneTopY = computeLaneTop(y);
         const float laneCenterY = laneTopY + kSlotSize.y * 0.5f;
-        const sf::Vector2f turnExitPosition{busObjectX, laneTopY - kTrackTurnRadius};
-        const sf::Vector2f exitPosition{outputCenterX - CacheLineView::kWidth * 0.5f,
-                                        junctionCenterY - CacheLineView::kHeight * 0.5f};
-        const sf::Vector2f exitCurveControl1{
-            turnExitPosition.x, turnExitPosition.y + (exitPosition.y - turnExitPosition.y) * 0.45f};
-        const float controlOffsetX =
-            std::max(kTrackTurnRadius * 0.9f, (turnExitPosition.x - exitPosition.x) * 0.35f);
-        const sf::Vector2f exitCurveControl2{exitPosition.x + controlOffsetX, exitPosition.y};
 
         m_lines[index].setPosition({x, y});
 
-        sf::RectangleShape verticalTrack;
-        verticalTrack.setPosition({x + kSlotSize.x * 0.5f - kTrackThickness * 0.5f, y + kSlotSize.y});
-        verticalTrack.setSize({kTrackThickness, laneCenterY - (y + kSlotSize.y)});
-        verticalTrack.setFillColor(kTrackColor);
-        m_tracks.push_back(verticalTrack);
-
-        m_mergeTracks.push_back(buildMergeTrack(toTrackCenter(turnExitPosition),
-                                                toTrackCenter(exitCurveControl1),
-                                                toTrackCenter(exitCurveControl2),
-                                                toTrackCenter(exitPosition),
-                                                kTrackThickness,
-                                                kTrackColor));
+        m_railSegments.push_back(std::make_unique<rails::StraightRailSegment>(
+            sf::Vector2f{x + kSlotSize.x * 0.5f, y + kSlotSize.y},
+            sf::Vector2f{x + kSlotSize.x * 0.5f, laneCenterY},
+            kTrackThickness,
+            kTrackColor));
     }
 }
 
 void RamView::draw(sf::RenderTarget& target, sf::RenderStates states) const {
     target.draw(m_container, states);
 
-    for (const sf::RectangleShape& track : m_tracks) {
-        target.draw(track, states);
-    }
-
-    for (const sf::VertexArray& bend : m_trackBends) {
-        target.draw(bend, states);
-    }
-
-    for (const sf::VertexArray& mergeTrack : m_mergeTracks) {
-        target.draw(mergeTrack, states);
+    for (const std::unique_ptr<rails::RailSegment>& segment : m_railSegments) {
+        target.draw(*segment, states);
     }
 
     for (const CacheLineView& line : m_lines) {

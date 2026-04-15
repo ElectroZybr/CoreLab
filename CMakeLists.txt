@@ -45,10 +45,14 @@ add_executable(CoreLab
     sim/RAM.cpp
     sim/simulation.cpp
     view/BusView.cpp
+    view/rails/ArcRailSegment.cpp
+    view/rails/BezierRailSegment.cpp
     view/CacheLineView.cpp
     view/CacheView.cpp
     view/CpuView.cpp
+    view/rails/RailSegment.cpp
     view/RamView.cpp
+    view/rails/StraightRailSegment.cpp
 )
 
 target_include_directories(CoreLab

@@ -3,10 +3,12 @@
 #include <SFML/Graphics.hpp>
 
 #include <cstddef>
+#include <memory>
 #include <optional>
 #include <vector>
 
 #include "view/CacheLineView.h"
+#include "view/rails/RailSegment.h"
 
 namespace view {
 class RamView : public sf::Drawable {
@@ -19,9 +21,15 @@ class RamView : public sf::Drawable {
         sf::Vector2f turnEntryPosition;
         sf::Vector2f turnCenter;
         float turnRadius = 0.0f;
+        float turnStartAngle = 0.0f;
+        float turnEndAngle = 0.0f;
         sf::Vector2f turnExitPosition;
-        sf::Vector2f exitCurveControl1;
-        sf::Vector2f exitCurveControl2;
+        sf::Vector2f collectorPosition;
+        sf::Vector2f junctionTurnCenter;
+        float junctionTurnRadius = 0.0f;
+        float junctionTurnStartAngle = 0.0f;
+        float junctionTurnEndAngle = 0.0f;
+        sf::Vector2f junctionTurnExitPosition;
         sf::Vector2f exitPosition;
     };
 
@@ -56,9 +64,7 @@ class RamView : public sf::Drawable {
     sf::Vector2f m_position{0.0f, 0.0f};
     sf::Vector2f m_size{0.0f, 0.0f};
     sf::ConvexShape m_container;
-    std::vector<sf::RectangleShape> m_tracks;
-    std::vector<sf::VertexArray> m_trackBends;
-    std::vector<sf::VertexArray> m_mergeTracks;
+    std::vector<std::unique_ptr<rails::RailSegment>> m_railSegments;
     std::vector<CacheLineView> m_lines;
     std::optional<sf::Text> m_titleText;
 };

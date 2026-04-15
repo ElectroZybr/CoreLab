@@ -15,9 +15,15 @@ class MemoryReadAnimation : public sf::Drawable {
                   sf::Vector2f turnEntryPosition,
                   sf::Vector2f turnCenter,
                   float turnRadius,
+                  float turnStartAngle,
+                  float turnEndAngle,
                   sf::Vector2f turnExitPosition,
-                  sf::Vector2f exitCurveControl1,
-                  sf::Vector2f exitCurveControl2,
+                  sf::Vector2f collectorPosition,
+                  sf::Vector2f junctionTurnCenter,
+                  float junctionTurnRadius,
+                  float junctionTurnStartAngle,
+                  float junctionTurnEndAngle,
+                  sf::Vector2f junctionTurnExitPosition,
                   sf::Vector2f exitPosition,
                   sf::Vector2f targetPosition);
     void sync(const sim::MemoryTransaction& transaction, sim::Tick tick);
@@ -25,11 +31,10 @@ class MemoryReadAnimation : public sf::Drawable {
 
   private:
     [[nodiscard]] static sf::Vector2f lerp(sf::Vector2f from, sf::Vector2f to, float t);
-    [[nodiscard]] static sf::Vector2f
-    cubicBezier(sf::Vector2f p0, sf::Vector2f p1, sf::Vector2f p2, sf::Vector2f p3, float t);
     [[nodiscard]] static float easeInOut(float t);
     [[nodiscard]] static float softEase(float t);
-    [[nodiscard]] static sf::Vector2f sampleTurnPosition(sf::Vector2f center, float radius, float t);
+    [[nodiscard]] static sf::Vector2f
+    sampleArcPosition(sf::Vector2f center, float radius, float startAngle, float endAngle, float t);
     [[nodiscard]] sf::Vector2f sampleToRamPort(float t) const;
     void draw(sf::RenderTarget& target, sf::RenderStates states) const override;
 
@@ -40,9 +45,15 @@ class MemoryReadAnimation : public sf::Drawable {
     sf::Vector2f m_turnEntryPosition{0.0f, 0.0f};
     sf::Vector2f m_turnCenter{0.0f, 0.0f};
     float m_turnRadius = 0.0f;
+    float m_turnStartAngle = 0.0f;
+    float m_turnEndAngle = 0.0f;
     sf::Vector2f m_turnExitPosition{0.0f, 0.0f};
-    sf::Vector2f m_exitCurveControl1{0.0f, 0.0f};
-    sf::Vector2f m_exitCurveControl2{0.0f, 0.0f};
+    sf::Vector2f m_collectorPosition{0.0f, 0.0f};
+    sf::Vector2f m_junctionTurnCenter{0.0f, 0.0f};
+    float m_junctionTurnRadius = 0.0f;
+    float m_junctionTurnStartAngle = 0.0f;
+    float m_junctionTurnEndAngle = 0.0f;
+    sf::Vector2f m_junctionTurnExitPosition{0.0f, 0.0f};
     sf::Vector2f m_exitPosition{0.0f, 0.0f};
     sf::Vector2f m_targetPosition{0.0f, 0.0f};
     bool m_hasRoute = false;

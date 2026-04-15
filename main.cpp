@@ -117,9 +117,15 @@ int main() {
                                    readPath.turnEntryPosition,
                                    readPath.turnCenter,
                                    readPath.turnRadius,
+                                   readPath.turnStartAngle,
+                                   readPath.turnEndAngle,
                                    readPath.turnExitPosition,
-                                   readPath.exitCurveControl1,
-                                   readPath.exitCurveControl2,
+                                   readPath.collectorPosition,
+                                   readPath.junctionTurnCenter,
+                                   readPath.junctionTurnRadius,
+                                   readPath.junctionTurnStartAngle,
+                                   readPath.junctionTurnEndAngle,
+                                   readPath.junctionTurnExitPosition,
                                    readPath.exitPosition,
                                    cache.getEntryPosition());
             readAnimation.sync(*activeTransaction, simulation.getCurrentTick());
