@@ -3,6 +3,7 @@
 #include <SFML/Graphics.hpp>
 
 #include "view/rails/RailPath.h"
+#include "view/rails/RailBuilder.h"
 
 namespace view {
 class BusView : public sf::Drawable {
@@ -10,6 +11,8 @@ class BusView : public sf::Drawable {
     explicit BusView(float thickness = 10.0f, float turnRadius = 110.0f);
 
     void setEndpoints(sf::Vector2f startTopLeft, sf::Vector2f endTopLeft);
+    void setEndpoints(
+        sf::Vector2f startTopLeft, sf::Vector2f endTopLeft, rails::RailDirection endDirection);
     void clear();
     [[nodiscard]] bool isVisible() const {
         return m_visible;

@@ -70,6 +70,86 @@ buildBusPath(sf::Vector2f startCenter, sf::Vector2f endCenter, view::rails::Rail
 
     return path;
 }
+
+view::rails::RailPath buildDirectedBusPath(sf::Vector2f startCenter,
+                                           sf::Vector2f endCenter,
+                                           view::rails::RailDirection endDirection,
+                                           view::rails::RailStyle style,
+                                           float turnRadius) {
+    if (endDirection != view::rails::RailDirection::Down) {
+        return view::rails::RailBuilder::orthogonal({startCenter, view::rails::RailDirection::Left},
+                                                    {endCenter, endDirection},
+                                                    turnRadius,
+                                                    style);
+    }
+
+    view::rails::RailPath path(style);
+
+    const float horizontalSpan = startCenter.x - endCenter.x;
+    if (horizontalSpan <= turnRadius * 4.0f) {
+        return view::rails::RailBuilder::orthogonal({startCenter, view::rails::RailDirection::Left},
+                                                    {endCenter, endDirection},
+                                                    turnRadius,
+                                                    style);
+    }
+
+    const float radius = std::max(1.0f, std::min(turnRadius, horizontalSpan * 0.2f));
+    const float firstCornerX = std::min(startCenter.x - radius * 2.0f, endCenter.x + radius * 3.0f);
+    const bool targetIsAbove = endCenter.y < startCenter.y;
+    const float middleY = endCenter.y - radius;
+
+    const sf::Vector2f firstStraightEnd{firstCornerX + radius, startCenter.y};
+    if (std::abs(firstStraightEnd.x - startCenter.x) > 0.001f) {
+        path.appendStraight(startCenter, firstStraightEnd);
+    }
+
+    if (targetIsAbove) {
+        path.appendArc({firstCornerX + radius, startCenter.y - radius},
+                       radius,
+                       std::numbers::pi_v<float> * 0.5f,
+                       std::numbers::pi_v<float>);
+
+        const sf::Vector2f verticalStart{firstCornerX, startCenter.y - radius};
+        const sf::Vector2f verticalEnd{firstCornerX, middleY + radius};
+        if (std::abs(verticalStart.y - verticalEnd.y) > 0.001f) {
+            path.appendStraight(verticalStart, verticalEnd);
+        }
+
+        path.appendArc({firstCornerX - radius, middleY + radius},
+                       radius,
+                       0.0f,
+                       -std::numbers::pi_v<float> * 0.5f);
+    } else {
+        path.appendArc({firstCornerX + radius, startCenter.y + radius},
+                       radius,
+                       -std::numbers::pi_v<float> * 0.5f,
+                       -std::numbers::pi_v<float>);
+
+        const sf::Vector2f verticalStart{firstCornerX, startCenter.y + radius};
+        const sf::Vector2f verticalEnd{firstCornerX, middleY - radius};
+        if (std::abs(verticalStart.y - verticalEnd.y) > 0.001f) {
+            path.appendStraight(verticalStart, verticalEnd);
+        }
+
+        path.appendArc({firstCornerX - radius, middleY - radius},
+                       radius,
+                       0.0f,
+                       std::numbers::pi_v<float> * 0.5f);
+    }
+
+    const sf::Vector2f middleStart{firstCornerX - radius, middleY};
+    const sf::Vector2f middleEnd{endCenter.x + radius, middleY};
+    if (std::abs(middleStart.x - middleEnd.x) > 0.001f) {
+        path.appendStraight(middleStart, middleEnd);
+    }
+
+    path.appendArc({endCenter.x + radius, middleY + radius},
+                   radius,
+                   -std::numbers::pi_v<float> * 0.5f,
+                   -std::numbers::pi_v<float>);
+
+    return path;
+}
 } // namespace
 
 namespace view {
@@ -81,6 +161,14 @@ void BusView::setEndpoints(sf::Vector2f startTopLeft, sf::Vector2f endTopLeft) {
     const sf::Vector2f startCenter = toCenter(startTopLeft);
     const sf::Vector2f endCenter = toCenter(endTopLeft);
     m_path = buildBusPath(startCenter, endCenter, m_style, m_turnRadius);
+    m_visible = !m_path.isEmpty();
+}
+
+void BusView::setEndpoints(
+    sf::Vector2f startTopLeft, sf::Vector2f endTopLeft, rails::RailDirection endDirection) {
+    const sf::Vector2f startCenter = toCenter(startTopLeft);
+    const sf::Vector2f endCenter = toCenter(endTopLeft);
+    m_path = buildDirectedBusPath(startCenter, endCenter, endDirection, m_style, m_turnRadius);
     m_visible = !m_path.isEmpty();
 }
 

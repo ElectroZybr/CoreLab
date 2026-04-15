@@ -8,6 +8,8 @@
 #include "sim/Cache.h"
 #include "sim/MemoryTransaction.h"
 #include "view/CacheLineView.h"
+#include "view/rails/RailPath.h"
+#include "view/rails/RailBuilder.h"
 
 namespace view {
 class CacheView : public sf::Drawable {
@@ -22,7 +24,22 @@ class CacheView : public sf::Drawable {
     [[nodiscard]] bool isInDragHandle(sf::Vector2f worldPoint) const;
     void setDragState(bool hovered, bool dragging);
     [[nodiscard]] sf::Vector2f getLinePosition() const;
+    [[nodiscard]] sf::Vector2f getLinePosition(std::size_t slotIndex) const;
     [[nodiscard]] sf::Vector2f getEntryPosition() const;
+    [[nodiscard]] rails::RailDirection getEntryDirection() const {
+        return rails::RailDirection::Down;
+    }
+    [[nodiscard]] const rails::RailPath& getInstallPath() const {
+        return getInstallPath(m_selectedSlotIndex);
+    }
+    [[nodiscard]] const rails::RailPath& getInstallPath(std::size_t slotIndex) const {
+        if (m_installPaths.empty()) {
+            static const rails::RailPath kEmptyPath;
+            return kEmptyPath;
+        }
+
+        return m_installPaths[std::min(slotIndex, m_installPaths.size() - 1)];
+    }
 
     void setFont(const sf::Font* font);
     void sync(const sim::Cache& cache, const sim::MemoryTransaction* activeTransaction = nullptr);
@@ -50,6 +67,8 @@ class CacheView : public sf::Drawable {
     sf::ConvexShape m_selectionFrame;
     std::optional<sf::Text> m_titleText;
     std::optional<sf::Text> m_summaryText;
+    std::vector<rails::RailPath> m_railPaths;
+    std::vector<rails::RailPath> m_installPaths;
     std::vector<CacheLineView> m_slotViews;
     std::vector<sf::ConvexShape> m_slotOverlays;
 };

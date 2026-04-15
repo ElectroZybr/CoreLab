@@ -3,7 +3,7 @@
 #include <algorithm>
 
 namespace {
-constexpr float kMinZoom = 0.25f;
+constexpr float kMinZoom = 0.1f;
 constexpr float kMaxZoom = 500.0f;
 } // namespace
 

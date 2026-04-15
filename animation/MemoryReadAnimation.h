@@ -29,7 +29,8 @@ class MemoryReadAnimation : public sf::Drawable {
                   sf::Vector2f targetPosition);
     void sync(const sim::MemoryTransaction& transaction,
               sim::Tick tick,
-              const view::rails::RailPath* busPath = nullptr);
+              const view::rails::RailPath* busPath = nullptr,
+              const view::rails::RailPath* installPath = nullptr);
     void clear();
 
   private:
@@ -38,6 +39,8 @@ class MemoryReadAnimation : public sf::Drawable {
     [[nodiscard]] static float softEase(float t);
     [[nodiscard]] static sf::Vector2f
     sampleArcPosition(sf::Vector2f center, float radius, float startAngle, float endAngle, float t);
+    [[nodiscard]] float getToRamPortLength() const;
+    [[nodiscard]] sf::Vector2f sampleToRamPortByDistance(float distance) const;
     [[nodiscard]] sf::Vector2f sampleToRamPort(float t) const;
     void draw(sf::RenderTarget& target, sf::RenderStates states) const override;
 

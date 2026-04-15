@@ -11,6 +11,18 @@ float length(sf::Vector2f vector) {
 sf::Vector2f toTopLeft(sf::Vector2f center) {
     return {center.x - view::CacheLineView::kWidth * 0.5f, center.y - view::CacheLineView::kHeight * 0.5f};
 }
+
+float clamp01(float value) {
+    if (value <= 0.0f) {
+        return 0.0f;
+    }
+
+    if (value >= 1.0f) {
+        return 1.0f;
+    }
+
+    return value;
+}
 } // namespace
 
 MemoryReadAnimation::MemoryReadAnimation(const sf::Font* font) : m_font(font), m_copy(font) {
@@ -58,39 +70,52 @@ void MemoryReadAnimation::setRoute(sf::Vector2f sourcePosition,
     m_visible = false;
 }
 
-void MemoryReadAnimation::sync(
-    const sim::MemoryTransaction& transaction, sim::Tick tick, const view::rails::RailPath* busPath) {
+void MemoryReadAnimation::sync(const sim::MemoryTransaction& transaction,
+                               sim::Tick tick,
+                               const view::rails::RailPath* busPath,
+                               const view::rails::RailPath* installPath) {
     if (!m_hasRoute || transaction.isCompleted(tick)) {
         m_visible = false;
         return;
     }
 
-    switch (transaction.getPhase(tick)) {
-    case sim::MemoryTransactionPhase::ToRamPort:
-        m_copy.setPosition(sampleToRamPort(transaction.getPhaseProgress(tick)));
-        m_visible = true;
-        break;
+    const float ramDistance = getToRamPortLength();
+    const float busDistance = (busPath && !busPath->isEmpty()) ? busPath->getLength() : length(m_targetPosition - m_exitPosition);
+    const float installDistance = (installPath && !installPath->isEmpty()) ? installPath->getLength() : 0.0f;
+    const float totalDistance = ramDistance + busDistance + installDistance;
 
-    case sim::MemoryTransactionPhase::OnBus:
-        if (busPath && !busPath->isEmpty() && busPath->getLength() > 0.0f) {
-            const float distance = busPath->getLength() * easeInOut(transaction.getPhaseProgress(tick));
-            m_copy.setPosition(toTopLeft(busPath->samplePoint(distance)));
+    if (totalDistance <= 0.0f) {
+        m_copy.setPosition(m_sourcePosition);
+        m_visible = true;
+        return;
+    }
+
+    float remainingDistance = totalDistance * easeInOut(transaction.getOverallProgress(tick));
+
+    if (remainingDistance <= ramDistance) {
+        m_copy.setPosition(sampleToRamPortByDistance(remainingDistance));
+        m_visible = true;
+        return;
+    }
+    remainingDistance -= ramDistance;
+
+    if (remainingDistance <= busDistance) {
+        if (busPath && !busPath->isEmpty()) {
+            m_copy.setPosition(toTopLeft(busPath->samplePoint(remainingDistance)));
         } else {
-            m_copy.setPosition(
-                lerp(m_exitPosition, m_targetPosition, easeInOut(transaction.getPhaseProgress(tick))));
+            m_copy.setPosition(lerp(m_exitPosition, m_targetPosition, busDistance > 0.0f ? remainingDistance / busDistance : 1.0f));
         }
         m_visible = true;
-        break;
-
-    case sim::MemoryTransactionPhase::Install:
-        m_copy.setPosition(m_targetPosition);
-        m_visible = true;
-        break;
-
-    case sim::MemoryTransactionPhase::Completed:
-        m_visible = false;
-        break;
+        return;
     }
+    remainingDistance -= busDistance;
+
+    if (installPath && !installPath->isEmpty() && installDistance > 0.0f) {
+        m_copy.setPosition(toTopLeft(installPath->samplePoint(remainingDistance)));
+    } else {
+        m_copy.setPosition(m_targetPosition);
+    }
+    m_visible = true;
 }
 
 void MemoryReadAnimation::clear() {
@@ -102,13 +127,12 @@ sf::Vector2f MemoryReadAnimation::lerp(sf::Vector2f from, sf::Vector2f to, float
 }
 
 float MemoryReadAnimation::easeInOut(float t) {
-    return 0.5f - 0.5f * std::cos(std::numbers::pi_v<float> * t);
+    t = clamp01(t);
+    return t * t * t * (t * (t * 6.0f - 15.0f) + 10.0f);
 }
 
 float MemoryReadAnimation::softEase(float t) {
-    constexpr float amplitude = 0.22f;
-    return t -
-           amplitude * std::sin(std::numbers::pi_v<float> * 2.0f * t) / (std::numbers::pi_v<float> * 2.0f);
+    return easeInOut(t);
 }
 
 sf::Vector2f MemoryReadAnimation::sampleArcPosition(
@@ -120,6 +144,10 @@ sf::Vector2f MemoryReadAnimation::sampleArcPosition(
 }
 
 sf::Vector2f MemoryReadAnimation::sampleToRamPort(float t) const {
+    return sampleToRamPortByDistance(getToRamPortLength() * softEase(t));
+}
+
+float MemoryReadAnimation::getToRamPortLength() const {
     const float laneDistance = length(m_lanePosition - m_sourcePosition);
     const float toTurnEntryDistance = length(m_turnEntryPosition - m_lanePosition);
     const float firstTurnDistance = std::abs(m_turnEndAngle - m_turnStartAngle) * m_turnRadius;
@@ -127,14 +155,20 @@ sf::Vector2f MemoryReadAnimation::sampleToRamPort(float t) const {
     const float junctionTurnDistance =
         std::abs(m_junctionTurnEndAngle - m_junctionTurnStartAngle) * m_junctionTurnRadius;
     const float exitDistance = length(m_exitPosition - m_junctionTurnExitPosition);
-    const float totalDistance = laneDistance + toTurnEntryDistance + firstTurnDistance + collectorDistance +
-                                junctionTurnDistance + exitDistance;
+    return laneDistance + toTurnEntryDistance + firstTurnDistance + collectorDistance + junctionTurnDistance +
+           exitDistance;
+}
 
-    if (totalDistance <= 0.0f) {
-        return m_sourcePosition;
-    }
+sf::Vector2f MemoryReadAnimation::sampleToRamPortByDistance(float distance) const {
+    const float laneDistance = length(m_lanePosition - m_sourcePosition);
+    const float toTurnEntryDistance = length(m_turnEntryPosition - m_lanePosition);
+    const float firstTurnDistance = std::abs(m_turnEndAngle - m_turnStartAngle) * m_turnRadius;
+    const float collectorDistance = length(m_collectorPosition - m_turnExitPosition);
+    const float junctionTurnDistance =
+        std::abs(m_junctionTurnEndAngle - m_junctionTurnStartAngle) * m_junctionTurnRadius;
+    const float exitDistance = length(m_exitPosition - m_junctionTurnExitPosition);
 
-    float remainingDistance = totalDistance * softEase(t);
+    float remainingDistance = std::clamp(distance, 0.0f, getToRamPortLength());
 
     if (remainingDistance <= laneDistance) {
         return lerp(
