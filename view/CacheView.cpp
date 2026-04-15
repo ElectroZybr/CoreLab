@@ -167,7 +167,7 @@ sf::Vector2f CacheView::getLineHeadCenter(std::size_t slotIndex) const {
     }
 
     const sf::Vector2f topLeft = m_slotViews[std::min(slotIndex, m_slotViews.size() - 1)].getPosition();
-    return {topLeft.x + CacheLineView::kHeight * 0.5f, topLeft.y + CacheLineView::kHeight * 0.5f};
+    return {topLeft.x, topLeft.y + CacheLineView::kHeight * 0.5f};
 }
 
 sf::Vector2f CacheView::getEntryCenter() const {
@@ -350,7 +350,7 @@ void CacheView::layout() {
     for (std::size_t index = 0; index < m_slotViews.size(); ++index) {
         const float slotCenterY = computeSlotCenterY(m_position, index);
         const float slotRightX = slotX + CacheLineView::kWidth;
-        const float lineEntryCenterX = slotX + CacheLineView::kHeight * 0.5f;
+        const float lineEntryCenterX = slotX;
 
         rails::RailPath installPath(railStyle);
 

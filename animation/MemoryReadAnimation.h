@@ -2,6 +2,9 @@
 
 #include <SFML/Graphics.hpp>
 
+#include <array>
+#include <optional>
+
 #include "sim/MemoryTransaction.h"
 #include "view/rails/RailPath.h"
 
@@ -52,6 +55,7 @@ class MemoryReadAnimation : public sf::Drawable {
                                                             float totalDistance,
                                                             const view::rails::RailPath* busPath,
                                                             const view::rails::RailPath* installPath) const;
+    void rebuildText();
     void rebuildRigidBody(sf::Vector2f headCenter);
     void rebuildCurvedBody(float headDistance,
                            float totalDistance,
@@ -81,6 +85,10 @@ class MemoryReadAnimation : public sf::Drawable {
     sf::VertexArray m_bodyFill{sf::PrimitiveType::TriangleStrip};
     sf::VertexArray m_leftOutline{sf::PrimitiveType::LineStrip};
     sf::VertexArray m_rightOutline{sf::PrimitiveType::LineStrip};
-    sf::CircleShape m_headCap;
-    sf::CircleShape m_tailCap;
+    sf::VertexArray m_dividers{sf::PrimitiveType::Lines};
+    sf::VertexArray m_headCap{sf::PrimitiveType::TriangleFan};
+    sf::VertexArray m_tailCap{sf::PrimitiveType::TriangleFan};
+    sf::VertexArray m_headOutline{sf::PrimitiveType::LineStrip};
+    sf::VertexArray m_tailOutline{sf::PrimitiveType::LineStrip};
+    std::array<std::optional<sf::Text>, 8> m_blockTexts;
 };

@@ -17,7 +17,7 @@ constexpr unsigned int kWindowWidth = 1600;
 constexpr unsigned int kWindowHeight = 900;
 constexpr float kInitialZoom = 0.5f;
 constexpr float kRamMoveSpeed = 900.0f;
-constexpr float kSimulationTicksPerSecond = 12.0f;
+constexpr float kSimulationTicksPerSecond = 60.0f;
 constexpr float kRailThickness = 6.0f;
 constexpr sf::Vector2f kInitialCameraPosition(0.0f, 0.0f);
 const sf::Color kBackgroundColor(8, 10, 18);
@@ -117,20 +117,32 @@ const sim::MemoryTransaction* findActiveTransaction(const sim::Simulation& simul
 } // namespace
 
 int main() {
+    constexpr const char* kWindowTitle = "CoreLab - CPU Visualizer Prototype";
     sf::ContextSettings contextSettings;
     contextSettings.antiAliasingLevel = 8;
 
-    sf::RenderWindow window(sf::VideoMode({kWindowWidth, kWindowHeight}),
-                            "CoreLab - CPU Visualizer Prototype",
-                            sf::Style::Titlebar | sf::Style::Close,
-                            sf::State::Windowed,
-                            contextSettings);
-    window.setVerticalSyncEnabled(true);
+    bool isFullscreen = false;
+    sf::RenderWindow window;
 
     sf::View sceneView(kInitialCameraPosition,
                        {static_cast<float>(kWindowWidth), static_cast<float>(kWindowHeight)});
     Camera camera(sceneView, 650.0f, 0.1f);
     camera.reset(kInitialCameraPosition, kInitialZoom);
+
+    const auto applyWindowMode = [&window, &sceneView, &camera, contextSettings, &isFullscreen]() {
+        const sf::VideoMode videoMode = isFullscreen ? sf::VideoMode::getDesktopMode()
+                                                     : sf::VideoMode({kWindowWidth, kWindowHeight});
+        const auto style = isFullscreen ? sf::Style::None : (sf::Style::Titlebar | sf::Style::Close);
+        const sf::State state = isFullscreen ? sf::State::Fullscreen : sf::State::Windowed;
+        window.create(videoMode, kWindowTitle, style, state, contextSettings);
+        window.setVerticalSyncEnabled(true);
+        sceneView.setCenter(camera.getPosition());
+        sceneView.setSize(
+            {static_cast<float>(window.getSize().x) / camera.getZoom(),
+             static_cast<float>(window.getSize().y) / camera.getZoom()});
+    };
+
+    applyWindowMode();
 
     sim::Simulation simulation(4096);
     Scene scene;
@@ -149,7 +161,20 @@ int main() {
 
     while (window.isOpen()) {
         const float deltaSeconds = frameClock.restart().asSeconds();
-        Controls::handleEvents(window, camera, sceneView, kInitialCameraPosition, kInitialZoom);
+        const Controls::EventActions actions =
+            Controls::handleEvents(window, camera, sceneView, kInitialCameraPosition, kInitialZoom);
+
+        if (actions.requestExit) {
+            window.close();
+            continue;
+        }
+
+        if (actions.toggleFullscreen) {
+            isFullscreen = !isFullscreen;
+            applyWindowMode();
+            previousLeftMousePressed = false;
+            dragTarget = DragTarget::None;
+        }
 
         sf::Vector2f movement = Controls::readMovement();
 

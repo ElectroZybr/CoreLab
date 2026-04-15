@@ -1,15 +1,25 @@
 #include "animation/MemoryReadAnimation.h"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <numbers>
 
 namespace {
-constexpr std::size_t kCurveSampleCount = 28;
+constexpr std::size_t kCurveSampleCount = 180;
+constexpr std::size_t kFloatBlockCount = 8;
 constexpr float kAnimatedTrainWidth = 82.0f;
 constexpr float kAnimatedTrainLength = 752.0f;
+constexpr float kTrainCornerRadius = 16.0f;
+constexpr unsigned int kBlockTextSize = 24;
+constexpr std::size_t kCapCornerSampleCount = 6;
+constexpr float kCapLengthScale = 0.22f;
+constexpr float kCapCornerRadiusScale = 0.18f;
 const sf::Color kTrainFillColor(200, 210, 223);
 const sf::Color kTrainOutlineColor(70, 97, 138);
+const sf::Color kTrainTextColor(27, 40, 67);
+constexpr std::array<const char*, kFloatBlockCount> kBlockLabels{
+    "x", "y", "z", "vx", "vy", "vz", "...", "..."};
 
 float length(sf::Vector2f vector) {
     return std::sqrt(vector.x * vector.x + vector.y * vector.y);
@@ -39,25 +49,140 @@ float clamp01(float value) {
 sf::Vector2f normalFromTangent(sf::Vector2f tangent) {
     return {-tangent.y, tangent.x};
 }
+
+sf::Vector2f toWorld(sf::Vector2f origin, sf::Vector2f tangent, sf::Vector2f normal, float localX, float localY) {
+    return origin + tangent * localX + normal * localY;
+}
+
+float halfWidthAtOffset(float offset) {
+    const float halfWidth = kAnimatedTrainWidth * 0.5f;
+    const float cornerRadius = std::min(kTrainCornerRadius, halfWidth);
+    const float clampedOffset = std::clamp(offset, 0.0f, kAnimatedTrainLength);
+
+    auto edgeHalfWidth = [halfWidth, cornerRadius](float distanceFromFace) {
+        if (distanceFromFace >= cornerRadius) {
+            return halfWidth;
+        }
+
+        const float x = cornerRadius - distanceFromFace;
+        return (halfWidth - cornerRadius) +
+               std::sqrt(std::max(0.0f, cornerRadius * cornerRadius - x * x));
+    };
+
+    return std::min(edgeHalfWidth(clampedOffset), edgeHalfWidth(kAnimatedTrainLength - clampedOffset));
+}
+
+void appendArcPoints(std::vector<sf::Vector2f>& points,
+                     sf::Vector2f origin,
+                     sf::Vector2f tangent,
+                     sf::Vector2f normal,
+                     float centerX,
+                     float centerY,
+                     float radius,
+                     float startAngle,
+                     float endAngle) {
+    for (std::size_t index = 0; index <= kCapCornerSampleCount; ++index) {
+        const float t = static_cast<float>(index) / static_cast<float>(kCapCornerSampleCount);
+        const float angle = startAngle + (endAngle - startAngle) * t;
+        const float localX = centerX + std::cos(angle) * radius;
+        const float localY = centerY + std::sin(angle) * radius;
+        points.push_back(toWorld(origin, tangent, normal, localX, localY));
+    }
+}
+
+void buildEndCap(sf::VertexArray& fill,
+                 sf::VertexArray& outline,
+                 sf::Vector2f baseCenter,
+                 sf::Vector2f tangent,
+                 sf::Vector2f normal,
+                 bool isHead) {
+    const float halfWidth = kAnimatedTrainWidth * 0.5f;
+    const float capLength = kAnimatedTrainWidth * kCapLengthScale;
+    const float cornerRadius = std::min(kAnimatedTrainWidth * kCapCornerRadiusScale, capLength);
+    const float signedTangent = isHead ? 1.0f : -1.0f;
+    const float outerX = capLength * signedTangent;
+    const float cornerCenterX = (capLength - cornerRadius) * signedTangent;
+
+    std::vector<sf::Vector2f> polygon;
+    polygon.reserve(2 * (kCapCornerSampleCount + 1) + 4);
+    polygon.push_back(toWorld(baseCenter, tangent, normal, 0.0f, halfWidth));
+    polygon.push_back(toWorld(baseCenter, tangent, normal, cornerCenterX, halfWidth));
+
+    if (isHead) {
+        appendArcPoints(polygon,
+                        baseCenter,
+                        tangent,
+                        normal,
+                        cornerCenterX,
+                        halfWidth - cornerRadius,
+                        cornerRadius,
+                        std::numbers::pi_v<float> * 0.5f,
+                        0.0f);
+        appendArcPoints(polygon,
+                        baseCenter,
+                        tangent,
+                        normal,
+                        cornerCenterX,
+                        -halfWidth + cornerRadius,
+                        cornerRadius,
+                        0.0f,
+                        -std::numbers::pi_v<float> * 0.5f);
+    } else {
+        appendArcPoints(polygon,
+                        baseCenter,
+                        tangent,
+                        normal,
+                        cornerCenterX,
+                        halfWidth - cornerRadius,
+                        cornerRadius,
+                        std::numbers::pi_v<float> * 0.5f,
+                        std::numbers::pi_v<float>);
+        appendArcPoints(polygon,
+                        baseCenter,
+                        tangent,
+                        normal,
+                        cornerCenterX,
+                        -halfWidth + cornerRadius,
+                        cornerRadius,
+                        std::numbers::pi_v<float>,
+                        std::numbers::pi_v<float> * 1.5f);
+    }
+
+    polygon.push_back(toWorld(baseCenter, tangent, normal, 0.0f, -halfWidth));
+
+    fill.clear();
+    outline.clear();
+    fill.resize(polygon.size() + 2);
+    outline.resize(polygon.size() + 1);
+
+    sf::Vector2f centroid{0.0f, 0.0f};
+    for (const sf::Vector2f& point : polygon) {
+        centroid += point;
+    }
+    centroid /= static_cast<float>(polygon.size());
+
+    fill[0].position = centroid;
+    fill[0].color = kTrainFillColor;
+    for (std::size_t index = 0; index < polygon.size(); ++index) {
+        fill[index + 1].position = polygon[index];
+        fill[index + 1].color = kTrainFillColor;
+        outline[index].position = polygon[index];
+        outline[index].color = kTrainOutlineColor;
+    }
+    fill[polygon.size() + 1].position = polygon.front();
+    fill[polygon.size() + 1].color = kTrainFillColor;
+    outline[polygon.size()].position = polygon.front();
+    outline[polygon.size()].color = kTrainOutlineColor;
+}
 } // namespace
 
 MemoryReadAnimation::MemoryReadAnimation(const sf::Font* font) : m_font(font) {
-    const float radius = kTrainWidth * 0.5f;
-    m_headCap.setRadius(radius);
-    m_headCap.setOrigin({radius, radius});
-    m_headCap.setFillColor(kTrainFillColor);
-    m_headCap.setOutlineThickness(3.0f);
-    m_headCap.setOutlineColor(kTrainOutlineColor);
-
-    m_tailCap.setRadius(radius);
-    m_tailCap.setOrigin({radius, radius});
-    m_tailCap.setFillColor(kTrainFillColor);
-    m_tailCap.setOutlineThickness(3.0f);
-    m_tailCap.setOutlineColor(kTrainOutlineColor);
+    rebuildText();
 }
 
 void MemoryReadAnimation::setFont(const sf::Font* font) {
     m_font = font;
+    rebuildText();
 }
 
 void MemoryReadAnimation::setRoute(sf::Vector2f sourcePosition,
@@ -100,7 +225,7 @@ void MemoryReadAnimation::sync(const sim::MemoryTransaction& transaction,
                                sim::Tick tick,
                                const view::rails::RailPath* busPath,
                                const view::rails::RailPath* installPath) {
-    if (!m_hasRoute || transaction.isCompleted(tick)) {
+    if (!m_hasRoute) {
         m_visible = false;
         return;
     }
@@ -109,6 +234,12 @@ void MemoryReadAnimation::sync(const sim::MemoryTransaction& transaction,
     const float busDistance = (busPath && !busPath->isEmpty()) ? busPath->getLength() : length(m_targetPosition - m_exitPosition);
     const float installDistance = (installPath && !installPath->isEmpty()) ? installPath->getLength() : 0.0f;
     const float totalDistance = ramDistance + busDistance + installDistance;
+
+    if (transaction.isCompleted(tick)) {
+        rebuildCurvedBody(totalDistance, totalDistance, busPath, installPath);
+        m_visible = true;
+        return;
+    }
 
     if (totalDistance <= 0.0f) {
         rebuildCurvedBody(0.0f, totalDistance, busPath, installPath);
@@ -301,15 +432,36 @@ sf::Vector2f MemoryReadAnimation::sampleRouteTangentByDistance(float distance,
     return normalizeOrFallback(m_targetPosition - m_exitPosition, {-1.0f, 0.0f});
 }
 
+void MemoryReadAnimation::rebuildText() {
+    for (std::optional<sf::Text>& blockText : m_blockTexts) {
+        blockText.reset();
+    }
+
+    if (!m_font) {
+        return;
+    }
+
+    for (std::size_t index = 0; index < m_blockTexts.size(); ++index) {
+        m_blockTexts[index].emplace(*m_font, kBlockLabels[index], kBlockTextSize);
+        m_blockTexts[index]->setFillColor(kTrainTextColor);
+    }
+}
+
 void MemoryReadAnimation::rebuildRigidBody(sf::Vector2f headCenter) {
     m_bodyFill.clear();
     m_leftOutline.clear();
     m_rightOutline.clear();
+    m_dividers.clear();
+    m_headCap.clear();
+    m_tailCap.clear();
+    m_headOutline.clear();
+    m_tailOutline.clear();
 
-    const sf::Vector2f direction{1.0f, 0.0f};
-    const sf::Vector2f normal = normalFromTangent(direction);
-    const float halfWidth = kTrainWidth * 0.5f;
-    const float centerSpan = std::max(0.0f, kTrainLength - kTrainWidth);
+    const sf::Vector2f trailingDirection{1.0f, 0.0f};
+    const sf::Vector2f forwardTangent{-1.0f, 0.0f};
+    const sf::Vector2f normal = normalFromTangent(forwardTangent);
+    const float headFaceHalfWidth = halfWidthAtOffset(0.0f);
+    const float tailFaceHalfWidth = halfWidthAtOffset(kTrainLength);
 
     m_bodyFill.resize(kCurveSampleCount * 2);
     m_leftOutline.resize(kCurveSampleCount);
@@ -318,8 +470,9 @@ void MemoryReadAnimation::rebuildRigidBody(sf::Vector2f headCenter) {
     for (std::size_t index = 0; index < kCurveSampleCount; ++index) {
         const float t =
             kCurveSampleCount > 1 ? static_cast<float>(index) / static_cast<float>(kCurveSampleCount - 1) : 0.0f;
-        const float distanceAlongTrain = centerSpan * t;
-        const sf::Vector2f center = headCenter + direction * distanceAlongTrain;
+        const float distanceAlongTrain = kTrainLength * t;
+        const float halfWidth = halfWidthAtOffset(distanceAlongTrain);
+        const sf::Vector2f center = headCenter + trailingDirection * distanceAlongTrain;
         const sf::Vector2f left = center + normal * halfWidth;
         const sf::Vector2f right = center - normal * halfWidth;
 
@@ -334,8 +487,46 @@ void MemoryReadAnimation::rebuildRigidBody(sf::Vector2f headCenter) {
         m_rightOutline[index].color = kTrainOutlineColor;
     }
 
-    m_headCap.setPosition(headCenter);
-    m_tailCap.setPosition(headCenter + direction * centerSpan);
+    const float blockStride = kTrainLength / static_cast<float>(kFloatBlockCount);
+    m_dividers.resize((kFloatBlockCount - 1) * 2);
+    for (std::size_t index = 1; index < kFloatBlockCount; ++index) {
+        const float offset = blockStride * static_cast<float>(index);
+        const float halfWidth = halfWidthAtOffset(offset);
+        const sf::Vector2f dividerCenter = headCenter + trailingDirection * offset;
+        const sf::Vector2f top = dividerCenter + normal * halfWidth;
+        const sf::Vector2f bottom = dividerCenter - normal * halfWidth;
+        m_dividers[(index - 1) * 2].position = top;
+        m_dividers[(index - 1) * 2].color = kTrainOutlineColor;
+        m_dividers[(index - 1) * 2 + 1].position = bottom;
+        m_dividers[(index - 1) * 2 + 1].color = kTrainOutlineColor;
+    }
+
+    for (std::size_t index = 0; index < m_blockTexts.size(); ++index) {
+        if (!m_blockTexts[index]) {
+            continue;
+        }
+
+        const float offset = blockStride * (static_cast<float>(index) + 0.5f);
+        const sf::Vector2f labelCenter = headCenter + trailingDirection * offset;
+        sf::Text& text = *m_blockTexts[index];
+        const sf::FloatRect bounds = text.getLocalBounds();
+        text.setOrigin({bounds.position.x + bounds.size.x * 0.5f, bounds.position.y + bounds.size.y * 0.5f});
+        text.setRotation(sf::degrees(0.0f));
+        text.setPosition(labelCenter);
+    }
+
+    m_headOutline.resize(2);
+    m_headOutline[0].position = headCenter + normal * headFaceHalfWidth;
+    m_headOutline[0].color = kTrainOutlineColor;
+    m_headOutline[1].position = headCenter - normal * headFaceHalfWidth;
+    m_headOutline[1].color = kTrainOutlineColor;
+
+    const sf::Vector2f tailCenter = headCenter + trailingDirection * kTrainLength;
+    m_tailOutline.resize(2);
+    m_tailOutline[0].position = tailCenter + normal * tailFaceHalfWidth;
+    m_tailOutline[0].color = kTrainOutlineColor;
+    m_tailOutline[1].position = tailCenter - normal * tailFaceHalfWidth;
+    m_tailOutline[1].color = kTrainOutlineColor;
 }
 
 void MemoryReadAnimation::rebuildCurvedBody(float headDistance,
@@ -345,9 +536,12 @@ void MemoryReadAnimation::rebuildCurvedBody(float headDistance,
     m_bodyFill.clear();
     m_leftOutline.clear();
     m_rightOutline.clear();
+    m_dividers.clear();
+    m_headCap.clear();
+    m_tailCap.clear();
+    m_headOutline.clear();
+    m_tailOutline.clear();
 
-    const float halfWidth = kTrainWidth * 0.5f;
-    const float visibleCenterSpan = std::max(0.0f, kTrainLength - kTrainWidth);
     m_bodyFill.resize(kCurveSampleCount * 2);
     m_leftOutline.resize(kCurveSampleCount);
     m_rightOutline.resize(kCurveSampleCount);
@@ -357,11 +551,12 @@ void MemoryReadAnimation::rebuildCurvedBody(float headDistance,
     for (std::size_t index = 0; index < kCurveSampleCount; ++index) {
         const float t =
             kCurveSampleCount > 1 ? static_cast<float>(index) / static_cast<float>(kCurveSampleCount - 1) : 0.0f;
-        const float distanceAlongTrain = visibleCenterSpan * t;
+        const float distanceAlongTrain = kTrainLength * t;
         const float sampleDistance = headDistance - distanceAlongTrain;
         const sf::Vector2f center = sampleRouteCenterByDistance(sampleDistance, busPath, installPath);
         const sf::Vector2f tangent = sampleRouteTangentByDistance(sampleDistance, totalDistance, busPath, installPath);
         const sf::Vector2f normal = normalFromTangent(tangent);
+        const float halfWidth = halfWidthAtOffset(distanceAlongTrain);
         const sf::Vector2f left = center + normal * halfWidth;
         const sf::Vector2f right = center - normal * halfWidth;
 
@@ -383,8 +578,63 @@ void MemoryReadAnimation::rebuildCurvedBody(float headDistance,
         }
     }
 
-    m_headCap.setPosition(headCenter);
-    m_tailCap.setPosition(tailCenter);
+    const float blockStride = kTrainLength / static_cast<float>(kFloatBlockCount);
+    m_dividers.resize((kFloatBlockCount - 1) * 2);
+    for (std::size_t index = 1; index < kFloatBlockCount; ++index) {
+        const float offset = blockStride * static_cast<float>(index);
+        const float sampleDistance = headDistance - offset;
+        const sf::Vector2f dividerCenter = sampleRouteCenterByDistance(sampleDistance, busPath, installPath);
+        const sf::Vector2f dividerTangent =
+            sampleRouteTangentByDistance(sampleDistance, totalDistance, busPath, installPath);
+        const sf::Vector2f dividerNormal = normalFromTangent(dividerTangent);
+        const float halfWidth = halfWidthAtOffset(offset);
+        const sf::Vector2f top = dividerCenter + dividerNormal * halfWidth;
+        const sf::Vector2f bottom = dividerCenter - dividerNormal * halfWidth;
+        m_dividers[(index - 1) * 2].position = top;
+        m_dividers[(index - 1) * 2].color = kTrainOutlineColor;
+        m_dividers[(index - 1) * 2 + 1].position = bottom;
+        m_dividers[(index - 1) * 2 + 1].color = kTrainOutlineColor;
+    }
+
+    for (std::size_t index = 0; index < m_blockTexts.size(); ++index) {
+        if (!m_blockTexts[index]) {
+            continue;
+        }
+
+        const float offset = blockStride * (static_cast<float>(index) + 0.5f);
+        const float sampleDistance = headDistance - offset;
+        sf::Vector2f bodyAxis =
+            -sampleRouteTangentByDistance(sampleDistance, totalDistance, busPath, installPath);
+        bodyAxis = normalizeOrFallback(bodyAxis, {1.0f, 0.0f});
+
+        sf::Text& text = *m_blockTexts[index];
+        const sf::FloatRect bounds = text.getLocalBounds();
+        text.setOrigin({bounds.position.x + bounds.size.x * 0.5f, bounds.position.y + bounds.size.y * 0.5f});
+        text.setRotation(sf::degrees(std::atan2(bodyAxis.y, bodyAxis.x) * 180.0f / std::numbers::pi_v<float>));
+        text.setPosition(sampleRouteCenterByDistance(sampleDistance, busPath, installPath));
+    }
+
+    const sf::Vector2f headTangent =
+        sampleRouteTangentByDistance(headDistance, totalDistance, busPath, installPath);
+    const sf::Vector2f tailTangent =
+        sampleRouteTangentByDistance(headDistance - kTrainLength, totalDistance, busPath, installPath);
+    const sf::Vector2f headNormal = normalFromTangent(headTangent);
+    const sf::Vector2f tailNormal = normalFromTangent(tailTangent);
+
+    const float headFaceHalfWidth = halfWidthAtOffset(0.0f);
+    const float tailFaceHalfWidth = halfWidthAtOffset(kTrainLength);
+
+    m_headOutline.resize(2);
+    m_headOutline[0].position = headCenter + headNormal * headFaceHalfWidth;
+    m_headOutline[0].color = kTrainOutlineColor;
+    m_headOutline[1].position = headCenter - headNormal * headFaceHalfWidth;
+    m_headOutline[1].color = kTrainOutlineColor;
+
+    m_tailOutline.resize(2);
+    m_tailOutline[0].position = tailCenter + tailNormal * tailFaceHalfWidth;
+    m_tailOutline[0].color = kTrainOutlineColor;
+    m_tailOutline[1].position = tailCenter - tailNormal * tailFaceHalfWidth;
+    m_tailOutline[1].color = kTrainOutlineColor;
 }
 
 void MemoryReadAnimation::draw(sf::RenderTarget& target, sf::RenderStates states) const {
@@ -393,8 +643,16 @@ void MemoryReadAnimation::draw(sf::RenderTarget& target, sf::RenderStates states
     }
 
     target.draw(m_bodyFill, states);
-    target.draw(m_tailCap, states);
-    target.draw(m_headCap, states);
+    target.draw(m_dividers, states);
+
+    for (const std::optional<sf::Text>& blockText : m_blockTexts) {
+        if (blockText) {
+            target.draw(*blockText, states);
+        }
+    }
+
     target.draw(m_leftOutline, states);
     target.draw(m_rightOutline, states);
+    target.draw(m_headOutline, states);
+    target.draw(m_tailOutline, states);
 }

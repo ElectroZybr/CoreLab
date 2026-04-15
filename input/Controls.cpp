@@ -8,14 +8,16 @@ bool isPressed(sf::Keyboard::Key key) {
 }
 } // namespace
 
-void Controls::handleEvents(sf::RenderWindow& window,
-                            Camera& camera,
-                            sf::View& sceneView,
-                            sf::Vector2f resetPosition,
-                            float resetZoom) {
+Controls::EventActions Controls::handleEvents(sf::RenderWindow& window,
+                                              Camera& camera,
+                                              sf::View& sceneView,
+                                              sf::Vector2f resetPosition,
+                                              float resetZoom) {
+    EventActions actions;
+
     while (const std::optional<sf::Event> event = window.pollEvent()) {
         if (event->is<sf::Event::Closed>()) {
-            window.close();
+            actions.requestExit = true;
         }
 
         if (const auto* resized = event->getIf<sf::Event::Resized>()) {
@@ -52,8 +54,16 @@ void Controls::handleEvents(sf::RenderWindow& window,
             if (keyPressed->code == sf::Keyboard::Key::R) {
                 camera.reset(resetPosition, resetZoom);
             }
+            if (keyPressed->code == sf::Keyboard::Key::F11) {
+                actions.toggleFullscreen = true;
+            }
+            if (keyPressed->code == sf::Keyboard::Key::Escape) {
+                actions.requestExit = true;
+            }
         }
     }
+
+    return actions;
 }
 
 sf::Vector2f Controls::readMovement() {
