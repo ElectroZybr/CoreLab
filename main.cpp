@@ -1,12 +1,15 @@
 #include <SFML/Graphics.hpp>
 
 #include <array>
+#include <cmath>
 
 #include "animation/MemoryReadAnimation.h"
 #include "core/Camera.h"
 #include "input/Controls.h"
 #include "scene/Scene.h"
 #include "sim/simulation.h"
+#include "view/BusView.h"
+#include "view/CacheView.h"
 #include "view/RamView.h"
 
 namespace {
@@ -18,6 +21,16 @@ constexpr float kSimulationTicksPerSecond = 30.0f;
 constexpr sf::Vector2f kInitialCameraPosition(0.0f, 0.0f);
 const sf::Color kBackgroundColor(8, 10, 18);
 constexpr std::array<std::size_t, 4> kAnimatedBlocks{8, 16, 24, 32};
+
+sf::Vector2f normalizeOrZero(sf::Vector2f vector) {
+    const float lengthSquared = vector.x * vector.x + vector.y * vector.y;
+    if (lengthSquared <= 0.0f) {
+        return {0.0f, 0.0f};
+    }
+
+    const float invLength = 1.0f / std::sqrt(lengthSquared);
+    return {vector.x * invLength, vector.y * invLength};
+}
 
 sim::Address toBlockAddress(std::size_t blockIndex) {
     return static_cast<sim::Address>(blockIndex) * sim::RAM::kCacheLineSizeInBytes;
@@ -52,8 +65,10 @@ int main() {
 
     sim::Simulation simulation(4096);
     Scene scene;
-    view::RamView ram(simulation.getRam().getSizeInBytes(), scene.getFont());
-    ram.setPosition({-2392.0f, 60.0f});
+    view::RamView ram(simulation.getRam().getSizeInBytes(), scene.getFont(), {-2392.0f, 60.0f});
+    view::CacheView cache(scene.getFont(), {-1000.0f, -1000.0f});
+    view::BusView ramToCacheBus(10.0f);
+    cache.sync(simulation.getCache());
     MemoryReadAnimation readAnimation(scene.getFont());
     std::size_t nextAnimatedBlockIndex = 0;
     float simulationTickAccumulator = 0.0f;
@@ -67,13 +82,13 @@ int main() {
         sf::Vector2f movement = Controls::readMovement();
 
         if (movement != sf::Vector2f(0.0f, 0.0f)) {
-            movement = movement.normalized();
+            movement = normalizeOrZero(movement);
             camera.move(movement * camera.getSpeed() * deltaSeconds);
         }
 
         sf::Vector2f ramMovement = Controls::readRamMovement();
         if (ramMovement != sf::Vector2f(0.0f, 0.0f)) {
-            ramMovement = ramMovement.normalized();
+            ramMovement = normalizeOrZero(ramMovement);
             ram.setPosition(ram.getPosition() + ramMovement * kRamMoveSpeed * deltaSeconds);
         }
 
@@ -95,16 +110,22 @@ int main() {
             const std::size_t lineIndex = static_cast<std::size_t>(activeTransaction->getLineBaseAddress() /
                                                                    sim::RAM::kCacheLineSizeInBytes);
             const view::RamView::ReadPath readPath = ram.getReadPath(lineIndex);
+            cache.sync(simulation.getCache(), activeTransaction);
+            ramToCacheBus.setEndpoints(readPath.exitPosition, cache.getEntryPosition());
             readAnimation.setRoute(readPath.sourcePosition,
                                    readPath.lanePosition,
                                    readPath.turnEntryPosition,
                                    readPath.turnCenter,
                                    readPath.turnRadius,
                                    readPath.turnExitPosition,
+                                   readPath.exitCurveControl1,
+                                   readPath.exitCurveControl2,
                                    readPath.exitPosition,
-                                   scene.getCacheLineEntryPosition());
+                                   cache.getEntryPosition());
             readAnimation.sync(*activeTransaction, simulation.getCurrentTick());
         } else {
+            cache.sync(simulation.getCache());
+            ramToCacheBus.clear();
             readAnimation.clear();
         }
 
@@ -114,6 +135,8 @@ int main() {
         window.setView(camera.getView());
         window.draw(scene);
         window.draw(ram);
+        window.draw(ramToCacheBus);
+        window.draw(cache);
         window.draw(readAnimation);
         window.display();
     }

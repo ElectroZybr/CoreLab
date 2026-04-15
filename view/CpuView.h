@@ -7,7 +7,7 @@
 namespace view {
 class CpuView : public sf::Drawable {
   public:
-    explicit CpuView(const sf::Font* font = nullptr);
+    explicit CpuView(const sf::Font* font = nullptr, sf::Vector2f position = {0.0f, 0.0f});
 
     void setPosition(sf::Vector2f position);
     [[nodiscard]] sf::Vector2f getPosition() const {

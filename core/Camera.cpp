@@ -14,6 +14,8 @@ Camera::Camera(sf::View& view, float moveSpeed, float zoomSpeed)
 
 void Camera::update(const sf::RenderTarget& target) {
     m_screenSize = toVector2f(target.getSize());
+    m_screenSize.x = std::max(m_screenSize.x, 1.0f);
+    m_screenSize.y = std::max(m_screenSize.y, 1.0f);
     m_view->setCenter(m_position);
     m_view->setSize({m_screenSize.x / m_zoom, m_screenSize.y / m_zoom});
 }
@@ -49,6 +51,10 @@ void Camera::dragTo(sf::Vector2i pixelPos) {
 }
 
 sf::Vector2f Camera::screenToWorld(sf::Vector2i screenPos) const {
+    if (m_screenSize.x <= 0.0f || m_screenSize.y <= 0.0f) {
+        return m_position;
+    }
+
     const sf::Vector2f viewSize = m_view->getSize();
     const sf::Vector2f viewCenter = m_view->getCenter();
 

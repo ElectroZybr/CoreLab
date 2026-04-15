@@ -35,7 +35,7 @@ void buildRoundedRect(sf::ConvexShape& shape, sf::Vector2f size, float radius) {
 } // namespace
 
 namespace view {
-CpuView::CpuView(const sf::Font* font) : m_font(font) {
+CpuView::CpuView(const sf::Font* font, sf::Vector2f position) : m_font(font), m_position(position) {
     buildRoundedRect(m_container, kSize, kCornerRadius);
     m_container.setFillColor(sf::Color(44, 54, 74));
     m_container.setOutlineThickness(3.0f);

@@ -27,6 +27,8 @@ void MemoryReadAnimation::setRoute(sf::Vector2f sourcePosition,
                                    sf::Vector2f turnCenter,
                                    float turnRadius,
                                    sf::Vector2f turnExitPosition,
+                                   sf::Vector2f exitCurveControl1,
+                                   sf::Vector2f exitCurveControl2,
                                    sf::Vector2f exitPosition,
                                    sf::Vector2f targetPosition) {
     m_sourcePosition = sourcePosition;
@@ -35,6 +37,8 @@ void MemoryReadAnimation::setRoute(sf::Vector2f sourcePosition,
     m_turnCenter = turnCenter;
     m_turnRadius = turnRadius;
     m_turnExitPosition = turnExitPosition;
+    m_exitCurveControl1 = exitCurveControl1;
+    m_exitCurveControl2 = exitCurveControl2;
     m_exitPosition = exitPosition;
     m_targetPosition = targetPosition;
     m_copy.setPosition(sourcePosition);
@@ -79,6 +83,15 @@ sf::Vector2f MemoryReadAnimation::lerp(sf::Vector2f from, sf::Vector2f to, float
     return from + (to - from) * t;
 }
 
+sf::Vector2f MemoryReadAnimation::cubicBezier(
+    sf::Vector2f p0, sf::Vector2f p1, sf::Vector2f p2, sf::Vector2f p3, float t) {
+    const float u = 1.0f - t;
+    const float uu = u * u;
+    const float tt = t * t;
+
+    return p0 * (uu * u) + p1 * (3.0f * uu * t) + p2 * (3.0f * u * tt) + p3 * (tt * t);
+}
+
 float MemoryReadAnimation::easeInOut(float t) {
     return 0.5f - 0.5f * std::cos(std::numbers::pi_v<float> * t);
 }
@@ -92,15 +105,26 @@ float MemoryReadAnimation::softEase(float t) {
 sf::Vector2f MemoryReadAnimation::sampleTurnPosition(sf::Vector2f center, float radius, float t) {
     const float angle = kTurnStartAngle + (kTurnEndAngle - kTurnStartAngle) * softEase(t);
     const sf::Vector2f shapeCenter{center.x + std::cos(angle) * radius, center.y + std::sin(angle) * radius};
-    return {shapeCenter.x - CacheLine::kWidth * 0.5f, shapeCenter.y - CacheLine::kHeight * 0.5f};
+    return {shapeCenter.x - view::CacheLineView::kWidth * 0.5f,
+            shapeCenter.y - view::CacheLineView::kHeight * 0.5f};
 }
 
 sf::Vector2f MemoryReadAnimation::sampleToRamPort(float t) const {
     const float laneDistance = length(m_lanePosition - m_sourcePosition);
     const float toTurnEntryDistance = length(m_turnEntryPosition - m_lanePosition);
     const float turnDistance = (kTurnEndAngle - kTurnStartAngle) * m_turnRadius;
-    const float toExitDistance = length(m_exitPosition - m_turnExitPosition);
-    const float totalDistance = laneDistance + toTurnEntryDistance + turnDistance + toExitDistance;
+    constexpr std::size_t exitCurveSegments = 20;
+    float exitCurveDistance = 0.0f;
+    sf::Vector2f previousPoint = m_turnExitPosition;
+    for (std::size_t step = 1; step <= exitCurveSegments; ++step) {
+        const float curveT = static_cast<float>(step) / static_cast<float>(exitCurveSegments);
+        const sf::Vector2f point =
+            cubicBezier(m_turnExitPosition, m_exitCurveControl1, m_exitCurveControl2, m_exitPosition, curveT);
+        exitCurveDistance += length(point - previousPoint);
+        previousPoint = point;
+    }
+
+    const float totalDistance = laneDistance + toTurnEntryDistance + turnDistance + exitCurveDistance;
 
     if (totalDistance <= 0.0f) {
         return m_sourcePosition;
@@ -125,11 +149,13 @@ sf::Vector2f MemoryReadAnimation::sampleToRamPort(float t) const {
         return sampleTurnPosition(
             m_turnCenter, m_turnRadius, turnDistance > 0.0f ? remainingDistance / turnDistance : 1.0f);
     }
-    remainingDistance -= turnDistance;
 
-    return lerp(m_turnExitPosition,
-                m_exitPosition,
-                toExitDistance > 0.0f ? remainingDistance / toExitDistance : 1.0f);
+    remainingDistance -= turnDistance;
+    return cubicBezier(m_turnExitPosition,
+                       m_exitCurveControl1,
+                       m_exitCurveControl2,
+                       m_exitPosition,
+                       exitCurveDistance > 0.0f ? remainingDistance / exitCurveDistance : 1.0f);
 }
 
 void MemoryReadAnimation::draw(sf::RenderTarget& target, sf::RenderStates states) const {

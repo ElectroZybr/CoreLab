@@ -14,11 +14,8 @@ bool loadFont(sf::Font& font) {
 }
 } // namespace
 
-Scene::Scene() : m_grid(sf::PrimitiveType::Lines), m_cacheView(nullptr) {
+Scene::Scene() : m_grid(sf::PrimitiveType::Lines) {
     m_hasFont = loadFont(m_font);
-    m_cacheView.setFont(m_hasFont ? &m_font : nullptr);
-    m_cacheView.setPosition({-400.0f, -100.0f});
-
     buildGrid();
 }
 
@@ -40,5 +37,4 @@ void Scene::buildGrid() {
 
 void Scene::draw(sf::RenderTarget& target, sf::RenderStates states) const {
     target.draw(m_grid, states);
-    target.draw(m_cacheView, states);
 }

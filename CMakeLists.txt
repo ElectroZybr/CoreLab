@@ -39,13 +39,12 @@ add_executable(CoreLab
     animation/MemoryReadAnimation.cpp
     core/Camera.cpp
     input/Controls.cpp
-    objects/CacheLine.cpp
-    objects/RAM.cpp
     scene/Scene.cpp
     sim/Cache.cpp
     sim/MemoryTransaction.cpp
     sim/RAM.cpp
     sim/simulation.cpp
+    view/BusView.cpp
     view/CacheLineView.cpp
     view/CacheView.cpp
     view/CpuView.cpp
