@@ -1,6 +1,7 @@
 #include <SFML/Graphics.hpp>
 
 #include <cmath>
+#include <optional>
 #include <random>
 
 #include "animation/MemoryReadAnimation.h"
@@ -10,13 +11,13 @@
 #include "sim/simulation.h"
 #include "view/BusView.h"
 #include "view/CacheView.h"
+#include "view/CpuView.h"
 #include "view/RamView.h"
 
 namespace {
 constexpr unsigned int kWindowWidth = 1600;
 constexpr unsigned int kWindowHeight = 900;
 constexpr float kInitialZoom = 0.5f;
-constexpr float kRamMoveSpeed = 900.0f;
 constexpr float kSimulationTicksPerSecond = 60.0f;
 constexpr float kRailThickness = 6.0f;
 constexpr sf::Vector2f kInitialCameraPosition(0.0f, 0.0f);
@@ -30,6 +31,7 @@ enum class DragTarget {
     None,
     Ram,
     Cache,
+    Cpu,
 };
 
 sf::Vector2f normalizeOrZero(sf::Vector2f vector) {
@@ -148,6 +150,7 @@ int main() {
     Scene scene;
     view::RamView ram(simulation.getRam().getSizeInBytes(), scene.getFont(), {0.0f, 0.0f});
     view::CacheView cache(scene.getFont(), {-2500.0f, 0.0f});
+    view::CpuView cpu(scene.getFont(), {-3600.0f, -120.0f});
     view::BusView ramToCacheBus(kRailThickness);
     cache.sync(simulation.getCache());
     MemoryReadAnimation readAnimation(scene.getFont());
@@ -183,19 +186,17 @@ int main() {
             camera.move(movement * camera.getSpeed() * deltaSeconds);
         }
 
-        sf::Vector2f ramMovement = Controls::readRamMovement();
-        if (ramMovement != sf::Vector2f(0.0f, 0.0f)) {
-            ramMovement = normalizeOrZero(ramMovement);
-            ram.setPosition(ram.getPosition() + ramMovement * kRamMoveSpeed * deltaSeconds);
-        }
-
         const bool leftMousePressed = sf::Mouse::isButtonPressed(sf::Mouse::Button::Left);
         const sf::Vector2f mouseWorldPosition = camera.screenToWorld(sf::Mouse::getPosition(window));
         const bool ramHovered = ram.isInDragHandle(mouseWorldPosition);
         const bool cacheHovered = cache.isInDragHandle(mouseWorldPosition);
+        const bool cpuHovered = cpu.isInDragHandle(mouseWorldPosition);
 
         if (leftMousePressed && !previousLeftMousePressed) {
-            if (cacheHovered) {
+            if (cpuHovered) {
+                dragTarget = DragTarget::Cpu;
+                dragOffset = mouseWorldPosition - cpu.getPosition();
+            } else if (cacheHovered) {
                 dragTarget = DragTarget::Cache;
                 dragOffset = mouseWorldPosition - cache.getPosition();
             } else if (ramHovered) {
@@ -210,10 +211,13 @@ int main() {
             ram.setPosition(mouseWorldPosition - dragOffset);
         } else if (dragTarget == DragTarget::Cache) {
             cache.setPosition(mouseWorldPosition - dragOffset);
+        } else if (dragTarget == DragTarget::Cpu) {
+            cpu.setPosition(mouseWorldPosition - dragOffset);
         }
 
         ram.setDragState(ramHovered || dragTarget == DragTarget::Ram, dragTarget == DragTarget::Ram);
         cache.setDragState(cacheHovered || dragTarget == DragTarget::Cache, dragTarget == DragTarget::Cache);
+        cpu.setDragState(cpuHovered || dragTarget == DragTarget::Cpu, dragTarget == DragTarget::Cpu);
 
         previousLeftMousePressed = leftMousePressed;
 
@@ -249,7 +253,10 @@ int main() {
                                                                    sim::RAM::kCacheLineSizeInBytes);
             const view::RamView::ReadPath readPath = ram.getReadPath(lineIndex);
             cache.sync(simulation.getCache(), activeTransaction);
+            ram.setHighlightedLine(lineIndex);
+            cache.setHighlightedSlot(activeTransaction->getTargetCacheSlotIndex());
             ramToCacheBus.setCenterEndpoints(readPath.exitPosition, cache.getEntryCenter(), cache.getEntryDirection());
+            ramToCacheBus.setHighlighted(true);
             readAnimation.setRoute(readPath.sourcePosition,
                                    readPath.lanePosition,
                                    readPath.turnEntryPosition,
@@ -273,7 +280,10 @@ int main() {
                 &cache.getInstallPath());
         } else {
             cache.sync(simulation.getCache());
+            ram.setHighlightedLine(std::nullopt);
+            cache.setHighlightedSlot(std::nullopt);
             ramToCacheBus.clear();
+            ramToCacheBus.setHighlighted(false);
             readAnimation.clear();
         }
 
@@ -282,6 +292,7 @@ int main() {
         window.clear(kBackgroundColor);
         window.setView(camera.getView());
         window.draw(scene);
+        window.draw(cpu);
         window.draw(ram);
         window.draw(ramToCacheBus);
         window.draw(cache);

@@ -35,6 +35,7 @@ constexpr float kLeftPadding = kCollectorCenterInsetX + kCollectorTurnRadius + 2
 constexpr float kOutputPortWidth = 28.0f;
 constexpr float kOutputPortHeight = 52.0f;
 const sf::Color kTrackColor(116, 134, 165);
+const sf::Color kHighlightTrackColor(247, 214, 92, 210);
 const sf::Color kOutputPortFillColor(48, 58, 78);
 const sf::Color kOutputPortOutlineColor(132, 154, 191);
 const sf::Color kDragHandleHoverColor(148, 172, 210, 34);
@@ -244,6 +245,11 @@ void RamView::setDragState(bool hovered, bool dragging) {
     for (sf::RectangleShape& mark : m_dragHandleMarks) {
         mark.setFillColor(markColor);
     }
+}
+
+void RamView::setHighlightedLine(std::optional<std::size_t> lineIndex) {
+    m_highlightedLineIndex = lineIndex;
+    layout();
 }
 
 sf::Vector2f RamView::getLinePosition(std::size_t index) const {
@@ -456,6 +462,7 @@ void RamView::layout() {
     }
 
     m_railPaths.clear();
+    m_highlightPath = rails::RailPath({kTrackThickness + 1.0f, kHighlightTrackColor});
 
     const rails::RailStyle railStyle{kTrackThickness, kTrackColor};
 
@@ -605,6 +612,45 @@ void RamView::layout() {
                                          sf::Vector2f{x + kSlotSize.x * 0.5f, laneCenterY},
                                          railStyle));
     }
+
+    if (m_highlightedLineIndex && *m_highlightedLineIndex < m_lines.size()) {
+        const ReadPath path = getReadPath(*m_highlightedLineIndex);
+        const rails::RailStyle highlightStyle{kTrackThickness + 1.0f, kHighlightTrackColor};
+        const sf::Vector2f lineTopLeft = m_lines[*m_highlightedLineIndex].getPosition();
+        const sf::Vector2f railEntryPoint{
+            lineTopLeft.x + kSlotSize.x * 0.5f,
+            lineTopLeft.y + kSlotSize.y,
+        };
+        const sf::Vector2f highlightLanePoint{railEntryPoint.x, path.lanePosition.y};
+        m_highlightPath = rails::RailPath(highlightStyle);
+
+        if (std::abs(highlightLanePoint.y - railEntryPoint.y) > 0.001f) {
+            m_highlightPath.appendStraight(railEntryPoint, highlightLanePoint);
+        }
+        if (std::abs(path.turnEntryPosition.x - highlightLanePoint.x) > 0.001f ||
+            std::abs(path.turnEntryPosition.y - highlightLanePoint.y) > 0.001f) {
+            m_highlightPath.appendStraight(highlightLanePoint, path.turnEntryPosition);
+        }
+        if (path.turnRadius > 0.001f && std::abs(path.turnEndAngle - path.turnStartAngle) > 0.001f) {
+            m_highlightPath.appendArc(
+                path.turnCenter, path.turnRadius, path.turnStartAngle, path.turnEndAngle);
+        }
+        if (std::abs(path.collectorPosition.x - path.turnExitPosition.x) > 0.001f ||
+            std::abs(path.collectorPosition.y - path.turnExitPosition.y) > 0.001f) {
+            m_highlightPath.appendStraight(path.turnExitPosition, path.collectorPosition);
+        }
+        if (path.junctionTurnRadius > 0.001f &&
+            std::abs(path.junctionTurnEndAngle - path.junctionTurnStartAngle) > 0.001f) {
+            m_highlightPath.appendArc(path.junctionTurnCenter,
+                                      path.junctionTurnRadius,
+                                      path.junctionTurnStartAngle,
+                                      path.junctionTurnEndAngle);
+        }
+        if (std::abs(path.exitPosition.x - path.junctionTurnExitPosition.x) > 0.001f ||
+            std::abs(path.exitPosition.y - path.junctionTurnExitPosition.y) > 0.001f) {
+            m_highlightPath.appendStraight(path.junctionTurnExitPosition, path.exitPosition);
+        }
+    }
 }
 
 void RamView::draw(sf::RenderTarget& target, sf::RenderStates states) const {
@@ -618,6 +664,10 @@ void RamView::draw(sf::RenderTarget& target, sf::RenderStates states) const {
 
     for (const rails::RailPath& path : m_railPaths) {
         target.draw(path, states);
+    }
+
+    if (!m_highlightPath.isEmpty()) {
+        target.draw(m_highlightPath, states);
     }
 
     for (const CacheLineView& line : m_lines) {

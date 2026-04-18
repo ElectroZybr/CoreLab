@@ -22,7 +22,6 @@ constexpr float kDragMarkWidth = 60.0f;
 constexpr float kDragMarkHeight = 5.0f;
 constexpr float kDragMarkGap = 8.0f;
 constexpr float kSlotGapY = 26.0f;
-constexpr float kSelectionFrameInset = 10.0f;
 constexpr float kInputPortWidth = 52.0f;
 constexpr float kInputPortHeight = 28.0f;
 constexpr float kTrackThickness = 6.0f;
@@ -31,7 +30,7 @@ constexpr float kCollectorCenterInsetX = 128.0f;
 constexpr float kRightPadding = kCollectorCenterInsetX + kCollectorTurnRadius + 36.0f;
 constexpr float kMinimumWidth = view::CacheLineView::kWidth + kLeftPadding + kRightPadding;
 constexpr float kMinimumHeight = view::CacheLineView::kHeight + kSlotsOffsetY + kBottomPadding;
-constexpr unsigned int kTitleTextSize = 30;
+constexpr unsigned int kTitleTextSize = 44;
 constexpr unsigned int kSummaryTextSize = 18;
 
 const sf::Color kContainerFillColor(36, 44, 60);
@@ -39,7 +38,7 @@ const sf::Color kContainerOutlineColor(88, 112, 150);
 const sf::Color kInputPortFillColor(48, 58, 78);
 const sf::Color kInputPortOutlineColor(132, 154, 191);
 const sf::Color kTrackColor(116, 134, 165);
-const sf::Color kSelectionOutlineColor(219, 239, 255);
+const sf::Color kHighlightTrackColor(247, 214, 92, 210);
 const sf::Color kEmptyOverlayColor(12, 20, 34, 155);
 const sf::Color kSelectedEmptyOverlayColor(71, 100, 142, 100);
 const sf::Color kDragHandleHoverColor(148, 172, 210, 34);
@@ -92,7 +91,6 @@ float computeSlotCenterY(sf::Vector2f position, std::size_t row) {
 namespace view {
 CacheView::CacheView(const sf::Font* font, sf::Vector2f position) : m_font(font), m_position(position) {
     m_container.setFillColor(kContainerFillColor);
-    m_selectionFrame.setFillColor(sf::Color::Transparent);
 
     rebuildContainer();
     rebuildText();
@@ -127,6 +125,11 @@ void CacheView::setDragState(bool hovered, bool dragging) {
     for (sf::RectangleShape& mark : m_dragHandleMarks) {
         mark.setFillColor(markColor);
     }
+}
+
+void CacheView::setHighlightedSlot(std::optional<std::size_t> slotIndex) {
+    m_highlightedSlotIndex = slotIndex;
+    layout();
 }
 
 sf::Vector2f CacheView::getLinePosition() const {
@@ -292,6 +295,7 @@ void CacheView::layout() {
     m_dragHandleOverlay.setPosition(m_position);
     m_railPaths.clear();
     m_installPaths.clear();
+    m_highlightPath = rails::RailPath({kTrackThickness + 1.0f, kHighlightTrackColor});
 
     const float marksCenterX = m_position.x + m_size.x * 0.5f;
     const float marksStartY = m_position.y + 22.0f;
@@ -309,26 +313,14 @@ void CacheView::layout() {
     }
 
     const float slotX = m_position.x + kLeftPadding;
-    const float selectionSizeX = CacheLineView::kWidth + kSelectionFrameInset * 2.0f;
-    const float selectionSizeY = CacheLineView::kHeight + kSelectionFrameInset * 2.0f;
     const rails::RailStyle railStyle{kTrackThickness, kTrackColor};
     const float collectorCenterX = m_position.x + m_size.x - kCollectorCenterInsetX;
-
-    m_selectionFrame.setOutlineThickness(0.0f);
-    buildRoundedRect(m_selectionFrame, {selectionSizeX, selectionSizeY}, 20.0f);
-    m_selectionFrame.setFillColor(sf::Color::Transparent);
-    m_selectionFrame.setOutlineThickness(4.0f);
-    m_selectionFrame.setOutlineColor(kSelectionOutlineColor);
 
     for (std::size_t index = 0; index < m_slotViews.size(); ++index) {
         const float slotY =
             m_position.y + kSlotsOffsetY + static_cast<float>(index) * (CacheLineView::kHeight + kSlotGapY);
         m_slotViews[index].setPosition({slotX, slotY});
         m_slotOverlays[index].setPosition({slotX, slotY});
-
-        if (index == m_selectedSlotIndex) {
-            m_selectionFrame.setPosition({slotX - kSelectionFrameInset, slotY - kSelectionFrameInset});
-        }
     }
 
     const float portCenterY = m_position.y;
@@ -353,6 +345,7 @@ void CacheView::layout() {
         const float lineEntryCenterX = slotX;
 
         rails::RailPath installPath(railStyle);
+        rails::RailPath highlightInstallPath({kTrackThickness + 1.0f, kHighlightTrackColor});
 
         if (slotCenterY < portCenterY + kCollectorTurnRadius + 0.5f) {
             m_railPaths.push_back(rails::RailBuilder::straight(
@@ -362,9 +355,13 @@ void CacheView::layout() {
 
             if (portCenterY < slotCenterY - 0.5f) {
                 installPath.appendStraight({collectorCenterX, portCenterY}, {collectorCenterX, slotCenterY});
+                highlightInstallPath.appendStraight({collectorCenterX, portCenterY},
+                                                   {collectorCenterX, slotCenterY});
             }
             if (lineEntryCenterX < collectorCenterX - 0.5f) {
                 installPath.appendStraight({collectorCenterX, slotCenterY}, {lineEntryCenterX, slotCenterY});
+                highlightInstallPath.appendStraight({collectorCenterX, slotCenterY},
+                                                   {lineEntryCenterX, slotCenterY});
             }
         } else {
             m_railPaths.push_back(rails::RailBuilder::straight(
@@ -386,18 +383,30 @@ void CacheView::layout() {
             const float turnStartY = slotCenterY - kCollectorTurnRadius;
             if (portCenterY < turnStartY - 0.5f) {
                 installPath.appendStraight({collectorCenterX, portCenterY}, {collectorCenterX, turnStartY});
+                highlightInstallPath.appendStraight({collectorCenterX, portCenterY},
+                                                   {collectorCenterX, turnStartY});
             }
             installPath.appendArc({collectorCenterX - kCollectorTurnRadius, slotCenterY - kCollectorTurnRadius},
                                   kCollectorTurnRadius,
                                   0.0f,
                                   std::numbers::pi_v<float> * 0.5f);
+            highlightInstallPath.appendArc({collectorCenterX - kCollectorTurnRadius,
+                                            slotCenterY - kCollectorTurnRadius},
+                                           kCollectorTurnRadius,
+                                           0.0f,
+                                           std::numbers::pi_v<float> * 0.5f);
             if (lineEntryCenterX < collectorCenterX - kCollectorTurnRadius - 0.5f) {
                 installPath.appendStraight({collectorCenterX - kCollectorTurnRadius, slotCenterY},
                                           {lineEntryCenterX, slotCenterY});
+                highlightInstallPath.appendStraight({collectorCenterX - kCollectorTurnRadius, slotCenterY},
+                                                   {lineEntryCenterX, slotCenterY});
             }
         }
 
         m_installPaths.push_back(std::move(installPath));
+        if (m_highlightedSlotIndex && *m_highlightedSlotIndex == index) {
+            m_highlightPath = std::move(highlightInstallPath);
+        }
     }
 
     collectorMinY = std::min(collectorMinY, portCenterY);
@@ -430,11 +439,11 @@ void CacheView::draw(sf::RenderTarget& target, sf::RenderStates states) const {
         target.draw(path, states);
     }
 
-    for (std::size_t index = 0; index < m_slotViews.size(); ++index) {
-        if (index == m_selectedSlotIndex) {
-            target.draw(m_selectionFrame, states);
-        }
+    if (!m_highlightPath.isEmpty()) {
+        target.draw(m_highlightPath, states);
+    }
 
+    for (std::size_t index = 0; index < m_slotViews.size(); ++index) {
         target.draw(m_slotViews[index], states);
         target.draw(m_slotOverlays[index], states);
     }

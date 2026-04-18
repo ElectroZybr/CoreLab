@@ -16,6 +16,9 @@ class BusView : public sf::Drawable {
     void setCenterEndpoints(sf::Vector2f startCenter, sf::Vector2f endCenter);
     void setCenterEndpoints(
         sf::Vector2f startCenter, sf::Vector2f endCenter, rails::RailDirection endDirection);
+    void setHighlighted(bool highlighted) {
+        m_highlighted = highlighted;
+    }
     void clear();
     [[nodiscard]] bool isVisible() const {
         return m_visible;
@@ -31,7 +34,10 @@ class BusView : public sf::Drawable {
     float m_thickness = 10.0f;
     float m_turnRadius = 110.0f;
     bool m_visible = false;
+    bool m_highlighted = false;
     rails::RailStyle m_style;
+    rails::RailStyle m_highlightStyle;
     rails::RailPath m_path;
+    rails::RailPath m_highlightPath;
 };
 } // namespace view

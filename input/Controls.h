@@ -17,5 +17,4 @@ struct EventActions {
                                         float resetZoom);
 
 [[nodiscard]] sf::Vector2f readMovement();
-[[nodiscard]] sf::Vector2f readRamMovement();
 } // namespace Controls

@@ -47,6 +47,7 @@ class RamView : public sf::Drawable {
     [[nodiscard]] sf::Vector2f getLinePosition(std::size_t index) const;
     [[nodiscard]] sf::Vector2f getLineHeadCenter(std::size_t index) const;
     [[nodiscard]] ReadPath getReadPath(std::size_t index) const;
+    void setHighlightedLine(std::optional<std::size_t> lineIndex);
     [[nodiscard]] std::size_t getSizeInBytes() const {
         return m_sizeInBytes;
     }
@@ -74,6 +75,8 @@ class RamView : public sf::Drawable {
     bool m_dragHovered = false;
     bool m_dragging = false;
     std::vector<rails::RailPath> m_railPaths;
+    rails::RailPath m_highlightPath;
+    std::optional<std::size_t> m_highlightedLineIndex;
     std::vector<CacheLineView> m_lines;
     std::optional<sf::Text> m_titleText;
 };

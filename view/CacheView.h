@@ -43,6 +43,7 @@ class CacheView : public sf::Drawable {
 
         return m_installPaths[std::min(slotIndex, m_installPaths.size() - 1)];
     }
+    void setHighlightedSlot(std::optional<std::size_t> slotIndex);
 
     void setFont(const sf::Font* font);
     void sync(const sim::Cache& cache, const sim::MemoryTransaction* activeTransaction = nullptr);
@@ -67,11 +68,12 @@ class CacheView : public sf::Drawable {
     std::vector<sf::RectangleShape> m_dragHandleMarks;
     bool m_dragHovered = false;
     bool m_dragging = false;
-    sf::ConvexShape m_selectionFrame;
     std::optional<sf::Text> m_titleText;
     std::optional<sf::Text> m_summaryText;
     std::vector<rails::RailPath> m_railPaths;
     std::vector<rails::RailPath> m_installPaths;
+    rails::RailPath m_highlightPath;
+    std::optional<std::size_t> m_highlightedSlotIndex;
     std::vector<CacheLineView> m_slotViews;
     std::vector<sf::ConvexShape> m_slotOverlays;
 };

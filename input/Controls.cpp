@@ -84,22 +84,3 @@ sf::Vector2f Controls::readMovement() {
 
     return movement;
 }
-
-sf::Vector2f Controls::readRamMovement() {
-    sf::Vector2f movement(0.0f, 0.0f);
-
-    if (isPressed(sf::Keyboard::Key::J)) {
-        movement.x -= 1.0f;
-    }
-    if (isPressed(sf::Keyboard::Key::L)) {
-        movement.x += 1.0f;
-    }
-    if (isPressed(sf::Keyboard::Key::I)) {
-        movement.y -= 1.0f;
-    }
-    if (isPressed(sf::Keyboard::Key::K)) {
-        movement.y += 1.0f;
-    }
-
-    return movement;
-}

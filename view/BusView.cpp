@@ -8,6 +8,7 @@
 
 namespace {
 const sf::Color kBusColor(116, 134, 165);
+const sf::Color kHighlightBusColor(247, 214, 92, 210);
 
 sf::Vector2f toCenter(sf::Vector2f topLeft) {
     return {topLeft.x + view::CacheLineView::kWidth * 0.5f, topLeft.y + view::CacheLineView::kHeight * 0.5f};
@@ -154,7 +155,8 @@ view::rails::RailPath buildDirectedBusPath(sf::Vector2f startCenter,
 
 namespace view {
 BusView::BusView(float thickness, float turnRadius)
-    : m_thickness(thickness), m_turnRadius(turnRadius), m_style{thickness, kBusColor}, m_path(m_style) {
+    : m_thickness(thickness), m_turnRadius(turnRadius), m_style{thickness, kBusColor},
+      m_highlightStyle{thickness + 1.0f, kHighlightBusColor}, m_path(m_style), m_highlightPath(m_highlightStyle) {
 }
 
 void BusView::setEndpoints(sf::Vector2f startTopLeft, sf::Vector2f endTopLeft) {
@@ -163,6 +165,7 @@ void BusView::setEndpoints(sf::Vector2f startTopLeft, sf::Vector2f endTopLeft) {
 
 void BusView::setCenterEndpoints(sf::Vector2f startCenter, sf::Vector2f endCenter) {
     m_path = buildBusPath(startCenter, endCenter, m_style, m_turnRadius);
+    m_highlightPath = buildBusPath(startCenter, endCenter, m_highlightStyle, m_turnRadius);
     m_visible = !m_path.isEmpty();
 }
 
@@ -174,12 +177,14 @@ void BusView::setEndpoints(
 void BusView::setCenterEndpoints(
     sf::Vector2f startCenter, sf::Vector2f endCenter, rails::RailDirection endDirection) {
     m_path = buildDirectedBusPath(startCenter, endCenter, endDirection, m_style, m_turnRadius);
+    m_highlightPath = buildDirectedBusPath(startCenter, endCenter, endDirection, m_highlightStyle, m_turnRadius);
     m_visible = !m_path.isEmpty();
 }
 
 void BusView::clear() {
     m_visible = false;
     m_path = rails::RailPath(m_style);
+    m_highlightPath = rails::RailPath(m_highlightStyle);
 }
 
 sf::Vector2f BusView::sampleTopLeft(float progress) const {
@@ -197,5 +202,8 @@ void BusView::draw(sf::RenderTarget& target, sf::RenderStates states) const {
     }
 
     target.draw(m_path, states);
+    if (m_highlighted) {
+        target.draw(m_highlightPath, states);
+    }
 }
 } // namespace view
