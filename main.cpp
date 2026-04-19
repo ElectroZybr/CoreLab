@@ -3,16 +3,17 @@
 #include <cmath>
 #include <optional>
 #include <random>
+#include <string>
 
-#include "animation/MemoryReadAnimation.h"
-#include "core/Camera.h"
-#include "input/Controls.h"
-#include "scene/Scene.h"
-#include "sim/simulation.h"
-#include "view/BusView.h"
-#include "view/CacheView.h"
-#include "view/CpuView.h"
-#include "view/RamView.h"
+#include "app/animation/MemoryReadAnimation.h"
+#include "app/core/Camera.h"
+#include "app/input/Controls.h"
+#include "app/scene/Scene.h"
+#include "app/sim/simulation.h"
+#include "app/view/BusView.h"
+#include "app/view/CacheView.h"
+#include "app/view/CpuView.h"
+#include "app/view/RamView.h"
 
 namespace {
 constexpr unsigned int kWindowWidth = 1600;
@@ -115,6 +116,45 @@ const sim::MemoryTransaction* findActiveTransaction(const sim::Simulation& simul
 
     return nullptr;
 }
+
+void seedDemoStruct(sim::RAM& ram) {
+    constexpr sim::Address kStructStartAddress = 0;
+    constexpr std::size_t kStructFloatCount = 6;
+    const std::vector<std::string> fieldNames{
+        "x",
+        "y",
+        "z",
+        "vx",
+        "vy",
+        "vz",
+    };
+
+    const std::size_t structCount = ram.getSizeInBytes() / (kStructFloatCount * sim::RAM::kFloatSizeInBytes);
+    for (std::size_t structIndex = 0; structIndex < structCount; ++structIndex) {
+        const sim::Address structAddress = kStructStartAddress + static_cast<sim::Address>(
+                                                                    structIndex * kStructFloatCount *
+                                                                    sim::RAM::kFloatSizeInBytes);
+
+        const float base = static_cast<float>(structIndex);
+        const std::vector<float> values{
+            base * 1.5f + 1.0f,
+            base * 1.5f + 2.0f,
+            base * 1.5f + 3.0f,
+            0.15f + base * 0.01f,
+            0.25f + base * 0.01f,
+            0.35f + base * 0.01f,
+        };
+
+        std::vector<std::string> labels;
+        labels.reserve(kStructFloatCount);
+        for (const std::string& fieldName : fieldNames) {
+            labels.push_back(fieldName + "[" + std::to_string(structIndex) + "]");
+        }
+
+        ram.writeFloatArray(structAddress, values);
+        ram.setFloatLabels(structAddress, labels);
+    }
+}
 } // namespace
 
 int main() {
@@ -145,12 +185,15 @@ int main() {
 
     applyWindowMode();
 
-    sim::Simulation simulation(4096);
+    // sim::Simulation simulation(4096+128);
+    sim::Simulation simulation(64*6);
+    seedDemoStruct(simulation.getRam());
     Scene scene;
     view::RamView ram(simulation.getRam().getSizeInBytes(), scene.getFont(), {0.0f, 0.0f});
     view::CpuView cpu(scene.getFont(), {-3400.0f, -700.0f});
     view::BusView ramToCacheBus(kRailThickness);
-    cpu.syncPrimaryCache(simulation.getCache());
+    ram.sync(simulation.getRam());
+    cpu.syncPrimaryCache(simulation.getCache(), &simulation.getRam());
     MemoryReadAnimation readAnimation(scene.getFont());
     float simulationTickAccumulator = 0.0f;
     bool previousLeftMousePressed = false;
@@ -224,7 +267,8 @@ int main() {
             const std::size_t lineIndex = static_cast<std::size_t>(address / sim::RAM::kCacheLineSizeInBytes);
             const std::size_t targetCacheSlotIndex = simulation.getCache().getTargetSlotIndex(address);
             const view::RamView::ReadPath previewReadPath = ram.getReadPath(lineIndex);
-            cpu.syncPrimaryCache(simulation.getCache());
+            ram.sync(simulation.getRam());
+            cpu.syncPrimaryCache(simulation.getCache(), &simulation.getRam());
             view::CacheView* primaryCache = cpu.getPrimaryCacheView();
             view::BusView previewBus(kRailThickness);
             if (primaryCache) {
@@ -253,7 +297,8 @@ int main() {
             const std::size_t lineIndex = static_cast<std::size_t>(activeTransaction->getLineBaseAddress() /
                                                                    sim::RAM::kCacheLineSizeInBytes);
             const view::RamView::ReadPath readPath = ram.getReadPath(lineIndex);
-            cpu.syncPrimaryCache(simulation.getCache(), activeTransaction);
+            ram.sync(simulation.getRam());
+            cpu.syncPrimaryCache(simulation.getCache(), &simulation.getRam(), activeTransaction);
             primaryCache = cpu.getPrimaryCacheView();
             ram.setHighlightedLine(lineIndex);
 
@@ -265,6 +310,7 @@ int main() {
                     }
                 }
                 ramToCacheBus.setHighlighted(true);
+                readAnimation.setCellLabels(simulation.getRam().getLineCellLabels(lineIndex));
                 readAnimation.setRoute(readPath.sourcePosition,
                                        readPath.lanePosition,
                                        readPath.turnEntryPosition,
@@ -288,7 +334,8 @@ int main() {
                     &primaryCache->getInstallPath());
             }
         } else {
-            cpu.syncPrimaryCache(simulation.getCache());
+            ram.sync(simulation.getRam());
+            cpu.syncPrimaryCache(simulation.getCache(), &simulation.getRam());
             ram.setHighlightedLine(std::nullopt);
             if (primaryCache) {
                 primaryCache->setHighlightedSlot(std::nullopt);

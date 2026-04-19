@@ -25,9 +25,11 @@ CpuView::CpuView(const sf::Font* font, sf::Vector2f position) : BlockView(font, 
     layoutBlock();
 }
 
-void CpuView::syncPrimaryCache(const sim::Cache& cache, const sim::MemoryTransaction* activeTransaction) {
+void CpuView::syncPrimaryCache(const sim::Cache& cache,
+                               const sim::RAM* ram,
+                               const sim::MemoryTransaction* activeTransaction) {
     if (CoreView* core = getPrimaryCore()) {
-        core->syncCache(cache, activeTransaction);
+        core->syncCache(cache, ram, activeTransaction);
     }
 }
 

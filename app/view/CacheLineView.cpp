@@ -8,10 +8,12 @@ namespace {
 constexpr float kCornerRadius = 16.0f;
 constexpr int kCornerPointCount = 16;
 constexpr float kDividerWidth = 2.0f;
-constexpr unsigned int kCellTextSize = 24;
+constexpr unsigned int kCellTextSize = 16;
 
 constexpr std::array<const char*, view::CacheLineView::kFloatCount> kDefaultLabels{
-    "x", "y", "z", "vx", "vy", "vz", "...", "..."};
+    "x[0]",  "y[0]",  "z[0]",  "vx[0]", "vy[0]", "vz[0]",
+    "x[1]",  "y[1]",  "z[1]",  "vx[1]", "vy[1]", "vz[1]",
+    "x[2]",  "y[2]",  "z[2]",  "vx[2]"}; 
 
 void buildRoundedRect(sf::ConvexShape& shape, sf::Vector2f size, float radius) {
     constexpr float halfPi = std::numbers::pi_v<float> * 0.5f;
@@ -40,6 +42,10 @@ void buildRoundedRect(sf::ConvexShape& shape, sf::Vector2f size, float radius) {
 namespace view {
 CacheLineView::CacheLineView(const sf::Font* font, sf::Vector2f position)
     : m_font(font), m_position(position) {
+    for (std::size_t index = 0; index < m_labels.size(); ++index) {
+        m_labels[index] = kDefaultLabels[index];
+    }
+
     m_container.setFillColor(sf::Color(200, 210, 223));
     m_container.setOutlineThickness(0.0f);
     buildRoundedRect(m_container, {kWidth, kHeight}, kCornerRadius);
@@ -66,6 +72,12 @@ void CacheLineView::setFont(const sf::Font* font) {
     layout();
 }
 
+void CacheLineView::setCellLabels(const std::array<std::string, kFloatCount>& labels) {
+    m_labels = labels;
+    rebuildText();
+    layout();
+}
+
 void CacheLineView::rebuildText() {
     for (std::optional<sf::Text>& cellText : m_cellTexts) {
         cellText.reset();
@@ -76,7 +88,11 @@ void CacheLineView::rebuildText() {
     }
 
     for (std::size_t index = 0; index < m_cellTexts.size(); ++index) {
-        m_cellTexts[index].emplace(*m_font, kDefaultLabels[index], kCellTextSize);
+        if (m_labels[index].empty()) {
+            continue;
+        }
+
+        m_cellTexts[index].emplace(*m_font, m_labels[index], kCellTextSize);
         m_cellTexts[index]->setFillColor(sf::Color(27, 40, 67));
     }
 }

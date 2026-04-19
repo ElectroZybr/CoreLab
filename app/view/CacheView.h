@@ -7,6 +7,7 @@
 
 #include "sim/Cache.h"
 #include "sim/MemoryTransaction.h"
+#include "sim/RAM.h"
 #include "view/BlockView.h"
 #include "view/CacheLineView.h"
 #include "view/rails/RailPath.h"
@@ -39,7 +40,9 @@ class CacheView : public BlockView {
     }
     void setHighlightedSlot(std::optional<std::size_t> slotIndex);
 
-    void sync(const sim::Cache& cache, const sim::MemoryTransaction* activeTransaction = nullptr);
+    void sync(const sim::Cache& cache,
+              const sim::RAM* ram = nullptr,
+              const sim::MemoryTransaction* activeTransaction = nullptr);
 
   private:
     void rebuildContainer();

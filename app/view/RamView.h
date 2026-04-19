@@ -7,6 +7,7 @@
 #include <optional>
 #include <vector>
 
+#include "sim/RAM.h"
 #include "view/BlockView.h"
 #include "view/CacheLineView.h"
 #include "view/rails/RailPath.h"
@@ -41,6 +42,8 @@ class RamView : public BlockView {
     [[nodiscard]] sf::Vector2f getLinePosition(std::size_t index) const;
     [[nodiscard]] sf::Vector2f getLineHeadCenter(std::size_t index) const;
     [[nodiscard]] ReadPath getReadPath(std::size_t index) const;
+    [[nodiscard]] sim::RAM::LineCellLabels getLineLabels(std::size_t index) const;
+    void sync(const sim::RAM& ram);
     void setHighlightedLine(std::optional<std::size_t> lineIndex);
     [[nodiscard]] std::size_t getSizeInBytes() const {
         return m_sizeInBytes;

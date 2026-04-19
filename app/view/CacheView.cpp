@@ -109,7 +109,7 @@ sf::Vector2f CacheView::getEntryCenter() const {
     return {portBounds.position.x + portBounds.size.x * 0.5f, portBounds.position.y + portBounds.size.y * 0.5f};
 }
 
-void CacheView::sync(const sim::Cache& cache, const sim::MemoryTransaction* activeTransaction) {
+void CacheView::sync(const sim::Cache& cache, const sim::RAM* ram, const sim::MemoryTransaction* activeTransaction) {
     m_cacheSizeInBytes = cache.getSizeInBytes();
 
     if (cache.getSlotCount() != m_slotViews.size()) {
@@ -131,6 +131,18 @@ void CacheView::sync(const sim::Cache& cache, const sim::MemoryTransaction* acti
     for (std::size_t index = 0; index < m_slotOverlays.size(); ++index) {
         const sim::CacheSlotInfo slotInfo = cache.getSlotInfo(index);
         sf::Color overlayColor = slotInfo.valid ? sf::Color::Transparent : kEmptyOverlayColor;
+
+        if (slotInfo.valid && ram) {
+            const std::size_t lineIndex =
+                static_cast<std::size_t>(slotInfo.baseAddress / sim::RAM::kCacheLineSizeInBytes);
+            if (lineIndex < ram->getLineCount()) {
+                m_slotViews[index].setCellLabels(ram->getLineCellLabels(lineIndex));
+            }
+        } else {
+            sim::RAM::LineCellLabels emptyLabels{};
+            emptyLabels.fill("");
+            m_slotViews[index].setCellLabels(emptyLabels);
+        }
 
         if (index == m_selectedSlotIndex) {
             m_selectedSlotValid = slotInfo.valid;

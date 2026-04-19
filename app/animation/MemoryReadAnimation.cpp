@@ -7,11 +7,11 @@
 
 namespace {
 constexpr std::size_t kCurveSampleCount = 180;
-constexpr std::size_t kFloatBlockCount = 8;
+constexpr std::size_t kFloatBlockCount = view::CacheLineView::kFloatCount;
 constexpr float kAnimatedTrainWidth = 82.0f;
 constexpr float kAnimatedTrainLength = 752.0f;
 constexpr float kTrainCornerRadius = 16.0f;
-constexpr unsigned int kBlockTextSize = 24;
+constexpr unsigned int kBlockTextSize = 16;
 constexpr std::size_t kCapCornerSampleCount = 6;
 constexpr float kCapLengthScale = 0.22f;
 constexpr float kCapCornerRadiusScale = 0.18f;
@@ -19,7 +19,9 @@ const sf::Color kTrainFillColor(200, 210, 223);
 const sf::Color kTrainOutlineColor(70, 97, 138);
 const sf::Color kTrainTextColor(27, 40, 67);
 constexpr std::array<const char*, kFloatBlockCount> kBlockLabels{
-    "x", "y", "z", "vx", "vy", "vz", "...", "..."};
+    "x[0]",  "y[0]",  "z[0]",  "vx[0]", "vy[0]", "vz[0]",
+    "x[1]",  "y[1]",  "z[1]",  "vx[1]", "vy[1]", "vz[1]",
+    "x[2]",  "y[2]",  "z[2]",  "vx[2]"}; 
 
 float length(sf::Vector2f vector) {
     return std::sqrt(vector.x * vector.x + vector.y * vector.y);
@@ -183,6 +185,22 @@ MemoryReadAnimation::MemoryReadAnimation(const sf::Font* font) : m_font(font) {
 void MemoryReadAnimation::setFont(const sf::Font* font) {
     m_font = font;
     rebuildText();
+}
+
+void MemoryReadAnimation::setCellLabels(const sim::RAM::LineCellLabels& labels) {
+    if (!m_font) {
+        return;
+    }
+
+    for (std::size_t index = 0; index < m_blockTexts.size(); ++index) {
+        m_blockTexts[index].reset();
+        if (labels[index].empty()) {
+            continue;
+        }
+
+        m_blockTexts[index].emplace(*m_font, labels[index], kBlockTextSize);
+        m_blockTexts[index]->setFillColor(kTrainTextColor);
+    }
 }
 
 void MemoryReadAnimation::setRoute(sf::Vector2f sourcePosition,

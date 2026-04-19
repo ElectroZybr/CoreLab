@@ -22,7 +22,9 @@ class CoreView : public BlockView {
                       sf::Vector2f size = {0.0f, 0.0f});
 
     void setCoreSize(sf::Vector2f size);
-    void syncCache(const sim::Cache& cache, const sim::MemoryTransaction* activeTransaction = nullptr);
+    void syncCache(const sim::Cache& cache,
+                   const sim::RAM* ram = nullptr,
+                   const sim::MemoryTransaction* activeTransaction = nullptr);
     [[nodiscard]] bool hasCache() const {
         return m_cacheView != nullptr;
     }

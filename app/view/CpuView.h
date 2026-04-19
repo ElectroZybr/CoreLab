@@ -15,7 +15,9 @@ class CpuView : public BlockView {
   public:
     explicit CpuView(const sf::Font* font = nullptr, sf::Vector2f position = {0.0f, 0.0f});
 
-    void syncPrimaryCache(const sim::Cache& cache, const sim::MemoryTransaction* activeTransaction = nullptr);
+    void syncPrimaryCache(const sim::Cache& cache,
+                          const sim::RAM* ram = nullptr,
+                          const sim::MemoryTransaction* activeTransaction = nullptr);
     [[nodiscard]] CoreView* getPrimaryCore() {
         return m_cores.empty() ? nullptr : m_cores.front().get();
     }

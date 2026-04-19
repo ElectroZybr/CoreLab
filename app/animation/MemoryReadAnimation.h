@@ -4,8 +4,11 @@
 
 #include <array>
 #include <optional>
+#include <string>
 
 #include "sim/MemoryTransaction.h"
+#include "sim/RAM.h"
+#include "view/CacheLineView.h"
 #include "view/rails/RailPath.h"
 
 class MemoryReadAnimation : public sf::Drawable {
@@ -33,6 +36,7 @@ class MemoryReadAnimation : public sf::Drawable {
               sim::Tick tick,
               const view::rails::RailPath* busPath = nullptr,
               const view::rails::RailPath* installPath = nullptr);
+    void setCellLabels(const sim::RAM::LineCellLabels& labels);
     void clear();
 
   private:
@@ -90,5 +94,5 @@ class MemoryReadAnimation : public sf::Drawable {
     sf::VertexArray m_tailCap{sf::PrimitiveType::TriangleFan};
     sf::VertexArray m_headOutline{sf::PrimitiveType::LineStrip};
     sf::VertexArray m_tailOutline{sf::PrimitiveType::LineStrip};
-    std::array<std::optional<sf::Text>, 8> m_blockTexts;
+    std::array<std::optional<sf::Text>, view::CacheLineView::kFloatCount> m_blockTexts;
 };

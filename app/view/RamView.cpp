@@ -20,7 +20,7 @@ constexpr float kBottomPadding = 24.0f;
 constexpr float kSlotsTopOffset = 138.0f;
 constexpr float kDragHandleHeight = kSlotsTopOffset - 16.0f;
 constexpr float kMinimumWidth = 320.0f;
-constexpr std::size_t kMaxColumns = 8;
+constexpr std::size_t kMaxColumns = 6;
 constexpr float kTrackThickness = 6.0f;
 constexpr float kCollectorTurnRadius = 100.0f;
 constexpr float kLeftPadding = kCollectorCenterInsetX + kCollectorTurnRadius + 24.0f;
@@ -206,6 +206,24 @@ sf::Vector2f RamView::getLineHeadCenter(std::size_t index) const {
 
     const sf::Vector2f topLeft = m_lines[index].getPosition();
     return {topLeft.x + CacheLineView::kHeight * 0.5f, topLeft.y + CacheLineView::kHeight * 0.5f};
+}
+
+sim::RAM::LineCellLabels RamView::getLineLabels(std::size_t index) const {
+    sim::RAM::LineCellLabels labels{};
+    labels.fill("");
+
+    if (index >= m_lines.size()) {
+        return labels;
+    }
+
+    return labels;
+}
+
+void RamView::sync(const sim::RAM& ram) {
+    const std::size_t lineCount = std::min(m_lines.size(), ram.getLineCount());
+    for (std::size_t index = 0; index < lineCount; ++index) {
+        m_lines[index].setCellLabels(ram.getLineCellLabels(index));
+    }
 }
 
 RamView::ReadPath RamView::getReadPath(std::size_t index) const {

@@ -48,9 +48,11 @@ void CoreView::setCoreSize(sf::Vector2f size) {
     setBlockSize(size);
 }
 
-void CoreView::syncCache(const sim::Cache& cache, const sim::MemoryTransaction* activeTransaction) {
+void CoreView::syncCache(const sim::Cache& cache,
+                         const sim::RAM* ram,
+                         const sim::MemoryTransaction* activeTransaction) {
     if (m_cacheView) {
-        m_cacheView->sync(cache, activeTransaction);
+        m_cacheView->sync(cache, ram, activeTransaction);
         layoutBlock();
     }
 }

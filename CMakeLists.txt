@@ -36,34 +36,35 @@ FetchContent_MakeAvailable(sfml)
 
 add_executable(CoreLab
     main.cpp
-    animation/MemoryReadAnimation.cpp
-    core/Camera.cpp
-    input/Controls.cpp
-    scene/Scene.cpp
-    sim/Cache.cpp
-    sim/MemoryTransaction.cpp
-    sim/RAM.cpp
-    sim/simulation.cpp
-    view/BusView.cpp
-    view/BlockView.cpp
-    view/rails/ArcRailSegment.cpp
-    view/rails/BezierRailSegment.cpp
-    view/CacheLineView.cpp
-    view/CacheView.cpp
-    view/CoreView.cpp
-    view/CpuView.cpp
-    view/PortView.cpp
-    view/rails/RailBuilder.cpp
-    view/rails/RailPath.cpp
-    view/rails/RailSegment.cpp
-    view/RamView.cpp
-    view/ViewNode.cpp
-    view/rails/StraightRailSegment.cpp
+    app/animation/MemoryReadAnimation.cpp
+    app/core/Camera.cpp
+    app/input/Controls.cpp
+    app/scene/Scene.cpp
+    app/sim/Cache.cpp
+    app/sim/MemoryTransaction.cpp
+    app/sim/RAM.cpp
+    app/sim/simulation.cpp
+    app/view/BusView.cpp
+    app/view/BlockView.cpp
+    app/view/rails/ArcRailSegment.cpp
+    app/view/rails/BezierRailSegment.cpp
+    app/view/CacheLineView.cpp
+    app/view/CacheView.cpp
+    app/view/CoreView.cpp
+    app/view/CpuView.cpp
+    app/view/PortView.cpp
+    app/view/rails/RailBuilder.cpp
+    app/view/rails/RailPath.cpp
+    app/view/rails/RailSegment.cpp
+    app/view/RamView.cpp
+    app/view/ViewNode.cpp
+    app/view/rails/StraightRailSegment.cpp
 )
 
 target_include_directories(CoreLab
     PRIVATE
         .
+        app
 )
 
 target_link_libraries(CoreLab
