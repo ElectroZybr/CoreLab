@@ -4,29 +4,21 @@
 #include "view/rails/RailBuilder.h"
 
 #include <algorithm>
-#include <array>
 #include <cmath>
 #include <limits>
-#include <memory>
 #include <numbers>
 #include <optional>
 #include <string>
 
 namespace {
-constexpr float kCornerRadius = 18.0f;
-constexpr int kCornerPointCount = 16;
 constexpr sf::Vector2f kSlotSize{view::CacheLineView::kWidth, view::CacheLineView::kHeight};
 constexpr float kColumnGap = 20.0f;
 constexpr float kRowGap = 110.0f;
 constexpr float kCollectorCenterInsetX = 128.0f;
 constexpr float kRightPadding = 24.0f;
-constexpr float kTopPadding = 18.0f;
 constexpr float kBottomPadding = 24.0f;
-constexpr float kSlotsTopOffset = 74.0f;
-constexpr float kDragHandleHeight = kSlotsTopOffset - 8.0f;
-constexpr float kDragMarkWidth = 60.0f;
-constexpr float kDragMarkHeight = 5.0f;
-constexpr float kDragMarkGap = 8.0f;
+constexpr float kSlotsTopOffset = 138.0f;
+constexpr float kDragHandleHeight = kSlotsTopOffset - 16.0f;
 constexpr float kMinimumWidth = 320.0f;
 constexpr std::size_t kMaxColumns = 8;
 constexpr float kTrackThickness = 6.0f;
@@ -38,11 +30,7 @@ const sf::Color kTrackColor(116, 134, 165);
 const sf::Color kHighlightTrackColor(247, 214, 92, 210);
 const sf::Color kOutputPortFillColor(48, 58, 78);
 const sf::Color kOutputPortOutlineColor(132, 154, 191);
-const sf::Color kDragHandleHoverColor(148, 172, 210, 34);
-const sf::Color kDragHandleActiveColor(186, 214, 255, 54);
-const sf::Color kDragMarkIdleColor(116, 134, 165, 120);
-const sf::Color kDragMarkHoverColor(183, 210, 244, 170);
-const sf::Color kDragMarkActiveColor(225, 239, 255, 220);
+const sf::Color kTransparentPortColor(0, 0, 0, 0);
 
 struct TangentBridge {
     bool valid = false;
@@ -52,29 +40,6 @@ struct TangentBridge {
     sf::Vector2f outputPoint{0.0f, 0.0f};
     float outputAngle = 0.0f;
 };
-
-void buildRoundedRect(sf::ConvexShape& shape, sf::Vector2f size, float radius) {
-    constexpr float halfPi = std::numbers::pi_v<float> * 0.5f;
-    constexpr std::array<float, 4> arcOffsets{
-        std::numbers::pi_v<float>, std::numbers::pi_v<float> * 1.5f, 0.0f, halfPi};
-
-    const std::array<sf::Vector2f, 4> centers{sf::Vector2f(radius, radius),
-                                              sf::Vector2f(size.x - radius, radius),
-                                              sf::Vector2f(size.x - radius, size.y - radius),
-                                              sf::Vector2f(radius, size.y - radius)};
-
-    shape.setPointCount(arcOffsets.size() * kCornerPointCount);
-    std::size_t pointIndex = 0;
-    for (std::size_t cornerIndex = 0; cornerIndex < centers.size(); ++cornerIndex) {
-        for (int step = 0; step < kCornerPointCount; ++step) {
-            const float t = static_cast<float>(step) / static_cast<float>(kCornerPointCount - 1);
-            const float angle = arcOffsets[cornerIndex] + t * halfPi;
-            shape.setPoint(pointIndex++,
-                           {centers[cornerIndex].x + std::cos(angle) * radius,
-                            centers[cornerIndex].y + std::sin(angle) * radius});
-        }
-    }
-}
 
 sf::Vector2f computeRamSize(std::size_t slotCount) {
     if (slotCount == 0) {
@@ -210,51 +175,25 @@ findNearestLowerTangent(sf::Vector2f position, std::size_t rows, float busCenter
 
 namespace view {
 RamView::RamView(std::size_t sizeInBytes, const sf::Font* font, sf::Vector2f position)
-    : m_font(font), m_sizeInBytes(sizeInBytes), m_position(position) {
+    : BlockView(font, position, computeRamSize(math::ceilDiv(sizeInBytes, kCacheLineSizeInBytes))),
+      m_sizeInBytes(sizeInBytes) {
     m_slotCount = math::ceilDiv(m_sizeInBytes, kCacheLineSizeInBytes);
+    setHeaderLayout({kDragHandleHeight, 18.0f, 98.0f, 74, 18});
+    setTitle("RAM");
+    setSubtitle(std::to_string(m_sizeInBytes) + " B");
+    addPort("mem_out", PortKind::Output, PortDirection::Left, PayloadKind::CacheLine);
     rebuildGeometry();
-    rebuildText();
-    layout();
-}
-
-void RamView::setPosition(sf::Vector2f position) {
-    m_position = position;
-    layout();
-}
-
-sf::FloatRect RamView::getBounds() const {
-    return {m_position, m_size};
-}
-
-bool RamView::isInDragHandle(sf::Vector2f worldPoint) const {
-    const sf::FloatRect dragHandleBounds{m_position, {m_size.x, kDragHandleHeight}};
-    return dragHandleBounds.contains(worldPoint);
-}
-
-void RamView::setDragState(bool hovered, bool dragging) {
-    m_dragHovered = hovered;
-    m_dragging = dragging;
-
-    const sf::Color overlayColor = m_dragging
-                                       ? kDragHandleActiveColor
-                                       : (m_dragHovered ? kDragHandleHoverColor : sf::Color::Transparent);
-    m_dragHandleOverlay.setFillColor(overlayColor);
-
-    const sf::Color markColor =
-        m_dragging ? kDragMarkActiveColor : (m_dragHovered ? kDragMarkHoverColor : kDragMarkIdleColor);
-    for (sf::RectangleShape& mark : m_dragHandleMarks) {
-        mark.setFillColor(markColor);
-    }
+    layoutBlock();
 }
 
 void RamView::setHighlightedLine(std::optional<std::size_t> lineIndex) {
     m_highlightedLineIndex = lineIndex;
-    layout();
+    layoutBlock();
 }
 
 sf::Vector2f RamView::getLinePosition(std::size_t index) const {
     if (index >= m_lines.size()) {
-        return m_position;
+        return getPosition();
     }
 
     return m_lines[index].getPosition();
@@ -262,7 +201,7 @@ sf::Vector2f RamView::getLinePosition(std::size_t index) const {
 
 sf::Vector2f RamView::getLineHeadCenter(std::size_t index) const {
     if (index >= m_lines.size()) {
-        return m_position;
+        return getPosition();
     }
 
     const sf::Vector2f topLeft = m_lines[index].getPosition();
@@ -271,21 +210,21 @@ sf::Vector2f RamView::getLineHeadCenter(std::size_t index) const {
 
 RamView::ReadPath RamView::getReadPath(std::size_t index) const {
     if (index >= m_lines.size()) {
-        return {m_position,
-                m_position,
-                m_position,
-                m_position,
+        return {getPosition(),
+                getPosition(),
+                getPosition(),
+                getPosition(),
                 0.0f,
                 0.0f,
                 0.0f,
-                m_position,
-                m_position,
-                m_position,
+                getPosition(),
+                getPosition(),
+                getPosition(),
                 0.0f,
                 0.0f,
                 0.0f,
-                m_position,
-                m_position};
+                getPosition(),
+                getPosition()};
     }
 
     const std::size_t columns = std::min(m_slotCount, kMaxColumns);
@@ -294,28 +233,27 @@ RamView::ReadPath RamView::getReadPath(std::size_t index) const {
     const sf::Vector2f lineTopLeft = m_lines[index].getPosition();
     const sf::Vector2f sourcePosition{lineTopLeft.x + CacheLineView::kHeight * 0.5f,
                                       lineTopLeft.y + CacheLineView::kHeight * 0.5f};
-    const sf::Vector2f lanePosition{sourcePosition.x, computeLaneCenterY(m_position, row)};
+    const sf::Vector2f lanePosition{sourcePosition.x, computeLaneCenterY(getPosition(), row)};
     const float laneCenterY = lanePosition.y;
-    const float busCenterX = m_position.x + kCollectorCenterInsetX;
-    const float outputCenterX = m_position.x;
+    const float busCenterX = getPosition().x + kCollectorCenterInsetX;
+    const float outputCenterX = getPosition().x;
     const float firstLaneCenterY =
-        m_position.y + kSlotsTopOffset + kSlotSize.y + (kRowGap - kSlotSize.y) * 0.5f + kSlotSize.y * 0.5f;
-    const float lastLaneCenterY = m_position.y + kSlotsTopOffset +
+        getPosition().y + kSlotsTopOffset + kSlotSize.y + (kRowGap - kSlotSize.y) * 0.5f + kSlotSize.y * 0.5f;
+    const float lastLaneCenterY = getPosition().y + kSlotsTopOffset +
                                   static_cast<float>(rows - 1) * (kSlotSize.y + kRowGap) + kSlotSize.y +
                                   (kRowGap - kSlotSize.y) * 0.5f + kSlotSize.y * 0.5f;
     const float junctionCenterY = (firstLaneCenterY + lastLaneCenterY) * 0.5f;
     const std::optional<TangentBridge> upperTangent =
-        findNearestUpperTangent(m_position, rows, busCenterX, junctionCenterY);
+        findNearestUpperTangent(getPosition(), rows, busCenterX, junctionCenterY);
     const std::optional<TangentBridge> lowerTangent =
-        findNearestLowerTangent(m_position, rows, busCenterX, junctionCenterY);
+        findNearestLowerTangent(getPosition(), rows, busCenterX, junctionCenterY);
     sf::Vector2f turnEntryPosition{busCenterX + kCollectorTurnRadius, laneCenterY};
     sf::Vector2f turnCenter{busCenterX + kCollectorTurnRadius, laneCenterY - kCollectorTurnRadius};
     float turnStartAngle = std::numbers::pi_v<float> * 0.5f;
     float turnEndAngle = std::numbers::pi_v<float>;
     sf::Vector2f turnExitPosition{busCenterX, laneCenterY - kCollectorTurnRadius};
     sf::Vector2f collectorPosition{busCenterX, junctionCenterY + kCollectorTurnRadius};
-    sf::Vector2f junctionTurnCenter{busCenterX - kCollectorTurnRadius,
-                                    junctionCenterY + kCollectorTurnRadius};
+    sf::Vector2f junctionTurnCenter{busCenterX - kCollectorTurnRadius, junctionCenterY + kCollectorTurnRadius};
     float junctionTurnStartAngle = 0.0f;
     float junctionTurnEndAngle = -std::numbers::pi_v<float> * 0.5f;
     sf::Vector2f junctionTurnExitPosition{busCenterX - kCollectorTurnRadius, junctionCenterY};
@@ -329,10 +267,8 @@ RamView::ReadPath RamView::getReadPath(std::size_t index) const {
         turnExitPosition = isNearestUpper
                                ? upperTangent->rowPoint
                                : sf::Vector2f{busCenterX, laneCenterY + kCollectorTurnRadius};
-        collectorPosition =
-            isNearestUpper
-                ? upperTangent->outputPoint
-                : sf::Vector2f{busCenterX, junctionCenterY - kCollectorTurnRadius};
+        collectorPosition = isNearestUpper ? upperTangent->outputPoint
+                                           : sf::Vector2f{busCenterX, junctionCenterY - kCollectorTurnRadius};
         junctionTurnCenter = {busCenterX - kCollectorTurnRadius, junctionCenterY - kCollectorTurnRadius};
         junctionTurnStartAngle = isNearestUpper ? upperTangent->outputAngle : 0.0f;
         junctionTurnEndAngle = std::numbers::pi_v<float> * 0.5f;
@@ -346,10 +282,8 @@ RamView::ReadPath RamView::getReadPath(std::size_t index) const {
         turnExitPosition = isNearestLower
                                ? lowerTangent->rowPoint
                                : sf::Vector2f{busCenterX, laneCenterY - kCollectorTurnRadius};
-        collectorPosition =
-            isNearestLower
-                ? lowerTangent->outputPoint
-                : sf::Vector2f{busCenterX, junctionCenterY + kCollectorTurnRadius};
+        collectorPosition = isNearestLower ? lowerTangent->outputPoint
+                                           : sf::Vector2f{busCenterX, junctionCenterY + kCollectorTurnRadius};
         junctionTurnCenter = {busCenterX - kCollectorTurnRadius, junctionCenterY + kCollectorTurnRadius};
         junctionTurnStartAngle = isNearestLower ? lowerTangent->outputAngle : 0.0f;
         junctionTurnEndAngle = -std::numbers::pi_v<float> * 0.5f;
@@ -386,76 +320,29 @@ RamView::ReadPath RamView::getReadPath(std::size_t index) const {
             exitPosition};
 }
 
-void RamView::setFont(const sf::Font* font) {
-    m_font = font;
-
-    for (CacheLineView& line : m_lines) {
-        line.setFont(font);
-    }
-
-    rebuildText();
-    layout();
-}
-
 void RamView::rebuildGeometry() {
-    m_size = computeRamSize(m_slotCount);
-
-    m_container.setFillColor(sf::Color(36, 44, 60));
-    m_container.setOutlineThickness(0.0f);
-    buildRoundedRect(m_container, m_size, kCornerRadius);
-    m_container.setOutlineThickness(3.0f);
-    m_container.setOutlineColor(sf::Color(88, 112, 150));
+    setBlockSize(computeRamSize(m_slotCount));
 
     m_outputPort.setOutlineThickness(0.0f);
-    buildRoundedRect(m_outputPort, {kOutputPortWidth, kOutputPortHeight}, 12.0f);
+    BlockView::buildRoundedRect(m_outputPort, {kOutputPortWidth, kOutputPortHeight}, 12.0f);
     m_outputPort.setOutlineThickness(3.0f);
     m_outputPort.setFillColor(kOutputPortFillColor);
     m_outputPort.setOutlineColor(kOutputPortOutlineColor);
 
-    m_dragHandleOverlay.setOutlineThickness(0.0f);
-    buildRoundedRect(m_dragHandleOverlay, {m_size.x, kDragHandleHeight}, kCornerRadius);
-    m_dragHandleOverlay.setFillColor(sf::Color::Transparent);
-
-    m_dragHandleMarks.assign(3, sf::RectangleShape{{kDragMarkWidth, kDragMarkHeight}});
-    for (sf::RectangleShape& mark : m_dragHandleMarks) {
-        mark.setOrigin({kDragMarkWidth * 0.5f, kDragMarkHeight * 0.5f});
-        mark.setFillColor(kDragMarkIdleColor);
-    }
-
     m_lines.clear();
     m_lines.reserve(m_slotCount);
     for (std::size_t index = 0; index < m_slotCount; ++index) {
-        m_lines.emplace_back(m_font);
+        m_lines.emplace_back(getFont());
     }
 }
 
-void RamView::rebuildText() {
-    m_titleText.reset();
+void RamView::layoutBlock() {
+    BlockView::layoutBlock();
 
-    if (!m_font) {
-        return;
-    }
-
-    m_titleText.emplace(*m_font, "RAM " + std::to_string(m_sizeInBytes) + " B", 30);
-    m_titleText->setFillColor(sf::Color::White);
-}
-
-void RamView::layout() {
-    m_container.setPosition(m_position);
+    const sf::Vector2f position = getPosition();
+    const sf::Vector2f size = getBlockSize();
     m_outputPort.setPosition(
-        {m_position.x - kOutputPortWidth * 0.5f, m_position.y + m_size.y * 0.5f - kOutputPortHeight * 0.5f});
-    m_dragHandleOverlay.setPosition(m_position);
-
-    const float marksCenterX = m_position.x + m_size.x * 0.5f;
-    const float marksStartY = m_position.y + 22.0f;
-    for (std::size_t index = 0; index < m_dragHandleMarks.size(); ++index) {
-        m_dragHandleMarks[index].setPosition(
-            {marksCenterX, marksStartY + static_cast<float>(index) * (kDragMarkHeight + kDragMarkGap)});
-    }
-
-    if (m_titleText) {
-        m_titleText->setPosition(m_position + sf::Vector2f(24.0f, kTopPadding));
-    }
+        {position.x - kOutputPortWidth * 0.5f, position.y + size.y * 0.5f - kOutputPortHeight * 0.5f});
 
     if (m_lines.empty()) {
         return;
@@ -465,23 +352,29 @@ void RamView::layout() {
     m_highlightPath = rails::RailPath({kTrackThickness + 1.0f, kHighlightTrackColor});
 
     const rails::RailStyle railStyle{kTrackThickness, kTrackColor};
-
     const std::size_t columns = std::min(m_slotCount, kMaxColumns);
     const std::size_t rows = math::ceilDiv(m_slotCount, columns);
-    const float busCenterX = m_position.x + kCollectorCenterInsetX;
+    const float busCenterX = position.x + kCollectorCenterInsetX;
     const float firstLaneCenterY =
-        m_position.y + kSlotsTopOffset + kSlotSize.y + (kRowGap - kSlotSize.y) * 0.5f + kSlotSize.y * 0.5f;
-    const float lastLaneCenterY = m_position.y + kSlotsTopOffset +
+        position.y + kSlotsTopOffset + kSlotSize.y + (kRowGap - kSlotSize.y) * 0.5f + kSlotSize.y * 0.5f;
+    const float lastLaneCenterY = position.y + kSlotsTopOffset +
                                   static_cast<float>(rows - 1) * (kSlotSize.y + kRowGap) + kSlotSize.y +
                                   (kRowGap - kSlotSize.y) * 0.5f + kSlotSize.y * 0.5f;
     const float junctionCenterY = (firstLaneCenterY + lastLaneCenterY) * 0.5f;
-    const float outputCenterX = m_position.x;
+    const float outputCenterX = position.x;
     m_outputPort.setPosition(
-        {m_position.x - kOutputPortWidth * 0.5f, junctionCenterY - kOutputPortHeight * 0.5f});
+        {position.x - kOutputPortWidth * 0.5f, junctionCenterY - kOutputPortHeight * 0.5f});
+
+    if (PortView* outputPort = findPort("mem_out")) {
+        outputPort->setLocalAnchor({0.0f, junctionCenterY - position.y});
+        outputPort->setSize({kOutputPortWidth, kOutputPortHeight});
+        outputPort->setColors(kTransparentPortColor, kTransparentPortColor);
+    }
+
     const std::optional<TangentBridge> upperTangent =
-        findNearestUpperTangent(m_position, rows, busCenterX, junctionCenterY);
+        findNearestUpperTangent(position, rows, busCenterX, junctionCenterY);
     const std::optional<TangentBridge> lowerTangent =
-        findNearestLowerTangent(m_position, rows, busCenterX, junctionCenterY);
+        findNearestLowerTangent(position, rows, busCenterX, junctionCenterY);
     float upperCollectorMinY = std::numeric_limits<float>::max();
     float lowerCollectorMaxY = -std::numeric_limits<float>::max();
     bool hasUpperRows = false;
@@ -490,10 +383,10 @@ void RamView::layout() {
     bool hasFarLowerRows = false;
 
     for (std::size_t row = 0; row < rows; ++row) {
-        const float rowY = m_position.y + kSlotsTopOffset + static_cast<float>(row) * (kSlotSize.y + kRowGap);
+        const float rowY = position.y + kSlotsTopOffset + static_cast<float>(row) * (kSlotSize.y + kRowGap);
         const float laneTopY = computeLaneTop(rowY);
         const float laneCenterY = laneTopY + kSlotSize.y * 0.5f;
-        const float laneEndX = m_position.x + kLeftPadding +
+        const float laneEndX = position.x + kLeftPadding +
                                static_cast<float>(columns - 1) * (kSlotSize.x + kColumnGap) +
                                kSlotSize.x * 0.5f;
 
@@ -517,8 +410,8 @@ void RamView::layout() {
             m_railPaths.push_back(std::move(upperTurn));
 
             if (isNearestUpper) {
-                m_railPaths.push_back(rails::RailBuilder::straight(
-                    upperTangent->rowPoint, upperTangent->outputPoint, railStyle));
+                m_railPaths.push_back(
+                    rails::RailBuilder::straight(upperTangent->rowPoint, upperTangent->outputPoint, railStyle));
             } else {
                 hasFarUpperRows = true;
                 upperCollectorMinY = std::min(upperCollectorMinY, turnExitCenterY);
@@ -543,15 +436,17 @@ void RamView::layout() {
             m_railPaths.push_back(std::move(lowerTurn));
 
             if (isNearestLower) {
-                m_railPaths.push_back(rails::RailBuilder::straight(
-                    lowerTangent->rowPoint, lowerTangent->outputPoint, railStyle));
+                m_railPaths.push_back(
+                    rails::RailBuilder::straight(lowerTangent->rowPoint, lowerTangent->outputPoint, railStyle));
             } else {
                 hasFarLowerRows = true;
                 lowerCollectorMaxY = std::max(lowerCollectorMaxY, turnExitCenterY);
             }
         } else {
-            m_railPaths.push_back(rails::RailBuilder::straight(
-                sf::Vector2f{busCenterX, laneCenterY}, sf::Vector2f{laneEndX, laneCenterY}, railStyle));
+            m_railPaths.push_back(
+                rails::RailBuilder::straight(sf::Vector2f{busCenterX, laneCenterY},
+                                             sf::Vector2f{laneEndX, laneCenterY},
+                                             railStyle));
         }
     }
 
@@ -600,8 +495,8 @@ void RamView::layout() {
         const std::size_t row = index / columns;
         const std::size_t column = index % columns;
 
-        const float x = m_position.x + kLeftPadding + static_cast<float>(column) * (kSlotSize.x + kColumnGap);
-        const float y = m_position.y + kSlotsTopOffset + static_cast<float>(row) * (kSlotSize.y + kRowGap);
+        const float x = position.x + kLeftPadding + static_cast<float>(column) * (kSlotSize.x + kColumnGap);
+        const float y = position.y + kSlotsTopOffset + static_cast<float>(row) * (kSlotSize.y + kRowGap);
         const float laneTopY = computeLaneTop(y);
         const float laneCenterY = laneTopY + kSlotSize.y * 0.5f;
 
@@ -632,8 +527,7 @@ void RamView::layout() {
             m_highlightPath.appendStraight(highlightLanePoint, path.turnEntryPosition);
         }
         if (path.turnRadius > 0.001f && std::abs(path.turnEndAngle - path.turnStartAngle) > 0.001f) {
-            m_highlightPath.appendArc(
-                path.turnCenter, path.turnRadius, path.turnStartAngle, path.turnEndAngle);
+            m_highlightPath.appendArc(path.turnCenter, path.turnRadius, path.turnStartAngle, path.turnEndAngle);
         }
         if (std::abs(path.collectorPosition.x - path.turnExitPosition.x) > 0.001f ||
             std::abs(path.collectorPosition.y - path.turnExitPosition.y) > 0.001f) {
@@ -653,14 +547,8 @@ void RamView::layout() {
     }
 }
 
-void RamView::draw(sf::RenderTarget& target, sf::RenderStates states) const {
-    target.draw(m_container, states);
+void RamView::drawBlockContent(sf::RenderTarget& target, sf::RenderStates states) const {
     target.draw(m_outputPort, states);
-    target.draw(m_dragHandleOverlay, states);
-
-    for (const sf::RectangleShape& mark : m_dragHandleMarks) {
-        target.draw(mark, states);
-    }
 
     for (const rails::RailPath& path : m_railPaths) {
         target.draw(path, states);
@@ -672,10 +560,6 @@ void RamView::draw(sf::RenderTarget& target, sf::RenderStates states) const {
 
     for (const CacheLineView& line : m_lines) {
         target.draw(line, states);
-    }
-
-    if (m_titleText) {
-        target.draw(*m_titleText, states);
     }
 }
 } // namespace view

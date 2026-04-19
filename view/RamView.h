@@ -7,11 +7,12 @@
 #include <optional>
 #include <vector>
 
+#include "view/BlockView.h"
 #include "view/CacheLineView.h"
 #include "view/rails/RailPath.h"
 
 namespace view {
-class RamView : public sf::Drawable {
+class RamView : public BlockView {
   public:
     static constexpr std::size_t kCacheLineSizeInBytes = 64;
 
@@ -37,13 +38,6 @@ class RamView : public sf::Drawable {
                      const sf::Font* font = nullptr,
                      sf::Vector2f position = {0.0f, 0.0f});
 
-    void setPosition(sf::Vector2f position);
-    [[nodiscard]] sf::Vector2f getPosition() const {
-        return m_position;
-    }
-    [[nodiscard]] sf::FloatRect getBounds() const;
-    [[nodiscard]] bool isInDragHandle(sf::Vector2f worldPoint) const;
-    void setDragState(bool hovered, bool dragging);
     [[nodiscard]] sf::Vector2f getLinePosition(std::size_t index) const;
     [[nodiscard]] sf::Vector2f getLineHeadCenter(std::size_t index) const;
     [[nodiscard]] ReadPath getReadPath(std::size_t index) const;
@@ -55,29 +49,17 @@ class RamView : public sf::Drawable {
         return m_slotCount;
     }
 
-    void setFont(const sf::Font* font);
-
   private:
     void rebuildGeometry();
-    void rebuildText();
-    void layout();
-    void draw(sf::RenderTarget& target, sf::RenderStates states) const override;
+    void layoutBlock() override;
+    void drawBlockContent(sf::RenderTarget& target, sf::RenderStates states) const override;
 
-    const sf::Font* m_font = nullptr;
     std::size_t m_sizeInBytes = 0;
     std::size_t m_slotCount = 0;
-    sf::Vector2f m_position{0.0f, 0.0f};
-    sf::Vector2f m_size{0.0f, 0.0f};
-    sf::ConvexShape m_container;
     sf::ConvexShape m_outputPort;
-    sf::ConvexShape m_dragHandleOverlay;
-    std::vector<sf::RectangleShape> m_dragHandleMarks;
-    bool m_dragHovered = false;
-    bool m_dragging = false;
     std::vector<rails::RailPath> m_railPaths;
     rails::RailPath m_highlightPath;
     std::optional<std::size_t> m_highlightedLineIndex;
     std::vector<CacheLineView> m_lines;
-    std::optional<sf::Text> m_titleText;
 };
 } // namespace view

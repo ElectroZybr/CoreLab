@@ -30,7 +30,6 @@ constexpr sim::Tick kMinInstallTicks = 12;
 enum class DragTarget {
     None,
     Ram,
-    Cache,
     Cpu,
 };
 
@@ -149,10 +148,9 @@ int main() {
     sim::Simulation simulation(4096);
     Scene scene;
     view::RamView ram(simulation.getRam().getSizeInBytes(), scene.getFont(), {0.0f, 0.0f});
-    view::CacheView cache(scene.getFont(), {-2500.0f, 0.0f});
-    view::CpuView cpu(scene.getFont(), {-3600.0f, -120.0f});
+    view::CpuView cpu(scene.getFont(), {-3400.0f, -700.0f});
     view::BusView ramToCacheBus(kRailThickness);
-    cache.sync(simulation.getCache());
+    cpu.syncPrimaryCache(simulation.getCache());
     MemoryReadAnimation readAnimation(scene.getFont());
     float simulationTickAccumulator = 0.0f;
     bool previousLeftMousePressed = false;
@@ -189,16 +187,12 @@ int main() {
         const bool leftMousePressed = sf::Mouse::isButtonPressed(sf::Mouse::Button::Left);
         const sf::Vector2f mouseWorldPosition = camera.screenToWorld(sf::Mouse::getPosition(window));
         const bool ramHovered = ram.isInDragHandle(mouseWorldPosition);
-        const bool cacheHovered = cache.isInDragHandle(mouseWorldPosition);
         const bool cpuHovered = cpu.isInDragHandle(mouseWorldPosition);
 
         if (leftMousePressed && !previousLeftMousePressed) {
             if (cpuHovered) {
                 dragTarget = DragTarget::Cpu;
                 dragOffset = mouseWorldPosition - cpu.getPosition();
-            } else if (cacheHovered) {
-                dragTarget = DragTarget::Cache;
-                dragOffset = mouseWorldPosition - cache.getPosition();
             } else if (ramHovered) {
                 dragTarget = DragTarget::Ram;
                 dragOffset = mouseWorldPosition - ram.getPosition();
@@ -209,14 +203,11 @@ int main() {
             dragTarget = DragTarget::None;
         } else if (dragTarget == DragTarget::Ram) {
             ram.setPosition(mouseWorldPosition - dragOffset);
-        } else if (dragTarget == DragTarget::Cache) {
-            cache.setPosition(mouseWorldPosition - dragOffset);
         } else if (dragTarget == DragTarget::Cpu) {
             cpu.setPosition(mouseWorldPosition - dragOffset);
         }
 
         ram.setDragState(ramHovered || dragTarget == DragTarget::Ram, dragTarget == DragTarget::Ram);
-        cache.setDragState(cacheHovered || dragTarget == DragTarget::Cache, dragTarget == DragTarget::Cache);
         cpu.setDragState(cpuHovered || dragTarget == DragTarget::Cpu, dragTarget == DragTarget::Cpu);
 
         previousLeftMousePressed = leftMousePressed;
@@ -233,55 +224,75 @@ int main() {
             const std::size_t lineIndex = static_cast<std::size_t>(address / sim::RAM::kCacheLineSizeInBytes);
             const std::size_t targetCacheSlotIndex = simulation.getCache().getTargetSlotIndex(address);
             const view::RamView::ReadPath previewReadPath = ram.getReadPath(lineIndex);
-
-            cache.sync(simulation.getCache());
+            cpu.syncPrimaryCache(simulation.getCache());
+            view::CacheView* primaryCache = cpu.getPrimaryCacheView();
             view::BusView previewBus(kRailThickness);
-            previewBus.setCenterEndpoints(
-                previewReadPath.exitPosition, cache.getEntryCenter(), cache.getEntryDirection());
+            if (primaryCache) {
+                if (const view::PortView* ramOut = ram.findPort("mem_out")) {
+                    if (const view::PortView* cacheIn = primaryCache->findPort("mem_in")) {
+                        previewBus.connect(*ramOut, *cacheIn);
+                    }
+                }
+            }
 
-            const sim::MemoryTransactionDurations visualDurations =
-                computeVisualLoadDurations(previewReadPath,
-                                           previewBus.getPath(),
-                                           cache.getInstallPath(targetCacheSlotIndex));
+            const sim::MemoryTransactionDurations visualDurations = primaryCache
+                                                                        ? computeVisualLoadDurations(
+                                                                              previewReadPath,
+                                                                              previewBus.getPath(),
+                                                                              primaryCache->getInstallPath(
+                                                                                  targetCacheSlotIndex))
+                                                                        : sim::MemoryTransactionDurations{};
 
             simulation.loadFloat(address, visualDurations);
             activeTransaction = findActiveTransaction(simulation);
         }
 
-        if (activeTransaction) {
+        view::CacheView* primaryCache = cpu.getPrimaryCacheView();
+
+        if (activeTransaction && primaryCache) {
             const std::size_t lineIndex = static_cast<std::size_t>(activeTransaction->getLineBaseAddress() /
                                                                    sim::RAM::kCacheLineSizeInBytes);
             const view::RamView::ReadPath readPath = ram.getReadPath(lineIndex);
-            cache.sync(simulation.getCache(), activeTransaction);
+            cpu.syncPrimaryCache(simulation.getCache(), activeTransaction);
+            primaryCache = cpu.getPrimaryCacheView();
             ram.setHighlightedLine(lineIndex);
-            cache.setHighlightedSlot(activeTransaction->getTargetCacheSlotIndex());
-            ramToCacheBus.setCenterEndpoints(readPath.exitPosition, cache.getEntryCenter(), cache.getEntryDirection());
-            ramToCacheBus.setHighlighted(true);
-            readAnimation.setRoute(readPath.sourcePosition,
-                                   readPath.lanePosition,
-                                   readPath.turnEntryPosition,
-                                   readPath.turnCenter,
-                                   readPath.turnRadius,
-                                   readPath.turnStartAngle,
-                                   readPath.turnEndAngle,
-                                   readPath.turnExitPosition,
-                                   readPath.collectorPosition,
-                                   readPath.junctionTurnCenter,
-                                   readPath.junctionTurnRadius,
-                                   readPath.junctionTurnStartAngle,
-                                   readPath.junctionTurnEndAngle,
-                                   readPath.junctionTurnExitPosition,
-                                   readPath.exitPosition,
-                                   cache.getLineHeadCenter());
-            readAnimation.sync(
-                *activeTransaction,
-                simulation.getCurrentTick(),
-                ramToCacheBus.isVisible() ? &ramToCacheBus.getPath() : nullptr,
-                &cache.getInstallPath());
+
+            if (primaryCache) {
+                primaryCache->setHighlightedSlot(activeTransaction->getTargetCacheSlotIndex());
+                if (const view::PortView* ramOut = ram.findPort("mem_out")) {
+                    if (const view::PortView* cacheIn = primaryCache->findPort("mem_in")) {
+                        ramToCacheBus.connect(*ramOut, *cacheIn);
+                    }
+                }
+                ramToCacheBus.setHighlighted(true);
+                readAnimation.setRoute(readPath.sourcePosition,
+                                       readPath.lanePosition,
+                                       readPath.turnEntryPosition,
+                                       readPath.turnCenter,
+                                       readPath.turnRadius,
+                                       readPath.turnStartAngle,
+                                       readPath.turnEndAngle,
+                                       readPath.turnExitPosition,
+                                       readPath.collectorPosition,
+                                       readPath.junctionTurnCenter,
+                                       readPath.junctionTurnRadius,
+                                       readPath.junctionTurnStartAngle,
+                                       readPath.junctionTurnEndAngle,
+                                       readPath.junctionTurnExitPosition,
+                                       readPath.exitPosition,
+                                       primaryCache->getLineHeadCenter());
+                readAnimation.sync(
+                    *activeTransaction,
+                    simulation.getCurrentTick(),
+                    ramToCacheBus.isVisible() ? &ramToCacheBus.getPath() : nullptr,
+                    &primaryCache->getInstallPath());
+            }
         } else {
-            cache.sync(simulation.getCache());
+            cpu.syncPrimaryCache(simulation.getCache());
             ram.setHighlightedLine(std::nullopt);
-            cache.setHighlightedSlot(std::nullopt);
+            if (primaryCache) {
+                primaryCache->setHighlightedSlot(std::nullopt);
+            }
             ramToCacheBus.clear();
             ramToCacheBus.setHighlighted(false);
             readAnimation.clear();
@@ -295,7 +306,6 @@ int main() {
         window.draw(cpu);
         window.draw(ram);
         window.draw(ramToCacheBus);
-        window.draw(cache);
         window.draw(readAnimation);
         window.display();
     }

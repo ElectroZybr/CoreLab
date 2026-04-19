@@ -2,41 +2,34 @@
 
 #include <SFML/Graphics.hpp>
 
-#include <array>
-#include <optional>
+#include <memory>
+#include <vector>
+
+#include "sim/Cache.h"
+#include "sim/MemoryTransaction.h"
+#include "view/BlockView.h"
+#include "view/CoreView.h"
 
 namespace view {
-class CpuView : public sf::Drawable {
+class CpuView : public BlockView {
   public:
     explicit CpuView(const sf::Font* font = nullptr, sf::Vector2f position = {0.0f, 0.0f});
 
-    void setPosition(sf::Vector2f position);
-    [[nodiscard]] sf::Vector2f getPosition() const {
-        return m_position;
+    void syncPrimaryCache(const sim::Cache& cache, const sim::MemoryTransaction* activeTransaction = nullptr);
+    [[nodiscard]] CoreView* getPrimaryCore() {
+        return m_cores.empty() ? nullptr : m_cores.front().get();
     }
-    [[nodiscard]] sf::FloatRect getBounds() const;
-    [[nodiscard]] bool isInDragHandle(sf::Vector2f worldPoint) const;
-    void setDragState(bool hovered, bool dragging);
-
-    void setFont(const sf::Font* font);
+    [[nodiscard]] const CoreView* getPrimaryCore() const {
+        return m_cores.empty() ? nullptr : m_cores.front().get();
+    }
+    [[nodiscard]] CacheView* getPrimaryCacheView();
+    [[nodiscard]] const CacheView* getPrimaryCacheView() const;
 
   private:
-    void rebuildGeometry();
-    void rebuildText();
-    void layout();
-    void draw(sf::RenderTarget& target, sf::RenderStates states) const override;
+    void rebuildCores();
+    void layoutBlock() override;
+    void drawBlockContent(sf::RenderTarget& target, sf::RenderStates states) const override;
 
-    const sf::Font* m_font = nullptr;
-    sf::Vector2f m_position{0.0f, 0.0f};
-    sf::Vector2f m_size{0.0f, 0.0f};
-    sf::ConvexShape m_container;
-    sf::ConvexShape m_dragHandleOverlay;
-    std::vector<sf::RectangleShape> m_dragHandleMarks;
-    bool m_dragHovered = false;
-    bool m_dragging = false;
-    std::array<sf::ConvexShape, 4> m_sections;
-    std::optional<sf::Text> m_titleText;
-    std::optional<sf::Text> m_summaryText;
-    std::array<std::optional<sf::Text>, 4> m_sectionTexts;
+    std::vector<std::unique_ptr<CoreView>> m_cores;
 };
 } // namespace view

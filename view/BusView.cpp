@@ -10,6 +10,21 @@ namespace {
 const sf::Color kBusColor(116, 134, 165);
 const sf::Color kHighlightBusColor(247, 214, 92, 210);
 
+view::rails::RailDirection toRailDirection(view::PortDirection direction) {
+    switch (direction) {
+        case view::PortDirection::Left:
+            return view::rails::RailDirection::Left;
+        case view::PortDirection::Right:
+            return view::rails::RailDirection::Right;
+        case view::PortDirection::Up:
+            return view::rails::RailDirection::Up;
+        case view::PortDirection::Down:
+            return view::rails::RailDirection::Down;
+    }
+
+    return view::rails::RailDirection::Right;
+}
+
 sf::Vector2f toCenter(sf::Vector2f topLeft) {
     return {topLeft.x + view::CacheLineView::kWidth * 0.5f, topLeft.y + view::CacheLineView::kHeight * 0.5f};
 }
@@ -157,6 +172,17 @@ namespace view {
 BusView::BusView(float thickness, float turnRadius)
     : m_thickness(thickness), m_turnRadius(turnRadius), m_style{thickness, kBusColor},
       m_highlightStyle{thickness + 1.0f, kHighlightBusColor}, m_path(m_style), m_highlightPath(m_highlightStyle) {
+}
+
+void BusView::connect(const PortView& startPort, const PortView& endPort) {
+    if (endPort.getDirection() == PortDirection::Down) {
+        setCenterEndpoints(startPort.getWorldAnchor(),
+                           endPort.getWorldAnchor(),
+                           toRailDirection(endPort.getDirection()));
+        return;
+    }
+
+    setCenterEndpoints(startPort.getWorldAnchor(), endPort.getWorldAnchor());
 }
 
 void BusView::setEndpoints(sf::Vector2f startTopLeft, sf::Vector2f endTopLeft) {

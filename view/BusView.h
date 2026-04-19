@@ -2,6 +2,7 @@
 
 #include <SFML/Graphics.hpp>
 
+#include "view/PortView.h"
 #include "view/rails/RailPath.h"
 #include "view/rails/RailBuilder.h"
 
@@ -10,6 +11,7 @@ class BusView : public sf::Drawable {
   public:
     explicit BusView(float thickness = 10.0f, float turnRadius = 110.0f);
 
+    void connect(const PortView& startPort, const PortView& endPort);
     void setEndpoints(sf::Vector2f startTopLeft, sf::Vector2f endTopLeft);
     void setEndpoints(
         sf::Vector2f startTopLeft, sf::Vector2f endTopLeft, rails::RailDirection endDirection);
