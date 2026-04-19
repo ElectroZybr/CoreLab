@@ -36,6 +36,8 @@ FetchContent_MakeAvailable(sfml)
 
 add_executable(CoreLab
     main.cpp
+    app/App.cpp
+    app/MachineController.cpp
     app/animation/MemoryReadAnimation.cpp
     app/core/Camera.cpp
     app/input/Controls.cpp
@@ -59,6 +61,7 @@ add_executable(CoreLab
     app/view/RamView.cpp
     app/view/ViewNode.cpp
     app/view/rails/StraightRailSegment.cpp
+    app/MachineController.h
 )
 
 target_include_directories(CoreLab
