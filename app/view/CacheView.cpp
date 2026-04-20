@@ -7,15 +7,18 @@
 #include "view/rails/RailBuilder.h"
 
 namespace {
-constexpr float kLeftPadding = 34.0f;
+constexpr float kCollectorTurnRadius = 100.0f;
+constexpr float kOutputCollectorCenterInsetX = 128.0f;
+constexpr float kOutputPortWidth = 28.0f;
+constexpr float kOutputPortHeight = 52.0f;
+constexpr float kLeftPadding = kOutputCollectorCenterInsetX + kCollectorTurnRadius + 24.0f;
 constexpr float kBottomPadding = 28.0f;
-constexpr float kSlotsOffsetY = 138.0f;
+constexpr float kSlotsOffsetY = 138.0f + kCollectorTurnRadius;
 constexpr float kDragHandleHeight = kSlotsOffsetY - 16.0f;
 constexpr float kSlotGapY = 26.0f;
 constexpr float kInputPortWidth = 52.0f;
 constexpr float kInputPortHeight = 28.0f;
 constexpr float kTrackThickness = 6.0f;
-constexpr float kCollectorTurnRadius = 100.0f;
 constexpr float kCollectorCenterInsetX = 128.0f;
 constexpr float kRightPadding = kCollectorCenterInsetX + kCollectorTurnRadius + 36.0f;
 constexpr float kMinimumWidth = view::CacheLineView::kWidth + kLeftPadding + kRightPadding;
@@ -23,6 +26,8 @@ constexpr float kMinimumHeight = view::CacheLineView::kHeight + kSlotsOffsetY + 
 
 const sf::Color kInputPortFillColor(48, 58, 78);
 const sf::Color kInputPortOutlineColor(132, 154, 191);
+const sf::Color kOutputPortFillColor(48, 58, 78);
+const sf::Color kOutputPortOutlineColor(132, 154, 191);
 const sf::Color kHighlightedInputPortFillColor(247, 214, 92, 90);
 const sf::Color kHighlightedInputPortOutlineColor(247, 214, 92, 220);
 const sf::Color kTrackColor(116, 134, 165);
@@ -55,7 +60,7 @@ CacheView::CacheView(const sf::Font* font, sf::Vector2f position)
     setHeaderLayout({kDragHandleHeight, 18.0f, 98.0f, 74, 18});
     setTitle("Cache");
     addPort("mem_in", PortKind::Input, PortDirection::Down, PayloadKind::CacheLine);
-    addPort("cpu_out", PortKind::Output, PortDirection::Left, PayloadKind::CacheLine);
+    addPort("cpu_out", PortKind::Output, PortDirection::Up, PayloadKind::CacheLine);
     rebuildContainer();
     layoutBlock();
 }
@@ -168,6 +173,12 @@ void CacheView::rebuildContainer() {
     m_inputPort.setOutlineThickness(3.0f);
     m_inputPort.setFillColor(kInputPortFillColor);
     m_inputPort.setOutlineColor(kInputPortOutlineColor);
+
+    m_outputPort.setOutlineThickness(0.0f);
+    BlockView::buildRoundedRect(m_outputPort, {kInputPortWidth, kInputPortHeight}, 12.0f);
+    m_outputPort.setOutlineThickness(3.0f);
+    m_outputPort.setFillColor(kOutputPortFillColor);
+    m_outputPort.setOutlineColor(kOutputPortOutlineColor);
 }
 
 void CacheView::rebuildSlots(std::size_t slotCount) {
@@ -196,12 +207,15 @@ void CacheView::layoutBlock() {
     const sf::Vector2f position = getWorldPosition();
     const sf::Vector2f size = getBlockSize();
     m_railPaths.clear();
+    m_outputRailPaths.clear();
     m_installPaths.clear();
     m_highlightPath = rails::RailPath({kTrackThickness + 1.0f, kHighlightTrackColor});
+    m_outputHighlightPath = rails::RailPath({kTrackThickness + 1.0f, kHighlightTrackColor});
 
     const float slotX = position.x + kLeftPadding;
     const rails::RailStyle railStyle{kTrackThickness, kTrackColor};
     const float collectorCenterX = position.x + size.x - kCollectorCenterInsetX;
+    const float outputCollectorCenterX = position.x + kOutputCollectorCenterInsetX;
 
     for (std::size_t index = 0; index < m_slotViews.size(); ++index) {
         const float slotY =
@@ -228,8 +242,10 @@ void CacheView::layoutBlock() {
         inputPort->setColors(kTransparentPortColor, kTransparentPortColor);
     }
 
+    const float outputCenterY = position.y + kCollectorTurnRadius * 1.3f;
+
     if (PortView* outputPort = findPort("cpu_out")) {
-        outputPort->setLocalAnchor({0.0f, size.y * 0.5f});
+        outputPort->setLocalAnchor({outputCollectorCenterX - position.x, outputCenterY - position.y});
         outputPort->setSize({kInputPortWidth, kInputPortHeight});
         outputPort->setColors(kTransparentPortColor, kTransparentPortColor);
     }
@@ -239,6 +255,9 @@ void CacheView::layoutBlock() {
     }
 
     m_installPaths.reserve(m_slotViews.size());
+    float outputCollectorMaxY = outputCenterY;
+    m_outputPort.setPosition(
+        {outputCollectorCenterX - kInputPortWidth * 0.5f, outputCenterY - kInputPortHeight * 0.5f});
 
     float collectorMinY = std::numeric_limits<float>::max();
     float collectorMaxY = -std::numeric_limits<float>::max();
@@ -247,6 +266,7 @@ void CacheView::layoutBlock() {
         const float slotCenterY = computeSlotCenterY(position, index);
         const float slotRightX = slotX + CacheLineView::kWidth;
         const float lineEntryCenterX = slotX;
+        const float lineExitCenterX = slotX;
 
         rails::RailPath installPath(railStyle);
         rails::RailPath highlightInstallPath({kTrackThickness + 1.0f, kHighlightTrackColor});
@@ -311,6 +331,33 @@ void CacheView::layoutBlock() {
         if (m_highlightedSlotIndex && *m_highlightedSlotIndex == index) {
             m_highlightPath = std::move(highlightInstallPath);
         }
+
+        m_outputRailPaths.push_back(
+            rails::RailBuilder::straight({lineExitCenterX, slotCenterY},
+                                         {outputCollectorCenterX + kCollectorTurnRadius, slotCenterY},
+                                         railStyle));
+
+        rails::RailPath outputTurn(railStyle);
+        outputTurn.appendArc({outputCollectorCenterX + kCollectorTurnRadius, slotCenterY - kCollectorTurnRadius},
+                             kCollectorTurnRadius,
+                             std::numbers::pi_v<float> * 0.5f,
+                             std::numbers::pi_v<float>);
+        m_outputRailPaths.push_back(std::move(outputTurn));
+        outputCollectorMaxY = std::max(outputCollectorMaxY, slotCenterY - kCollectorTurnRadius);
+
+        if (m_highlightedSlotIndex && *m_highlightedSlotIndex == index) {
+            m_outputHighlightPath.appendStraight({lineExitCenterX, slotCenterY},
+                                                {outputCollectorCenterX + kCollectorTurnRadius, slotCenterY});
+            m_outputHighlightPath.appendArc({outputCollectorCenterX + kCollectorTurnRadius,
+                                             slotCenterY - kCollectorTurnRadius},
+                                            kCollectorTurnRadius,
+                                            std::numbers::pi_v<float> * 0.5f,
+                                            std::numbers::pi_v<float>);
+            if (outputCenterY < slotCenterY - kCollectorTurnRadius - 0.5f) {
+                m_outputHighlightPath.appendStraight({outputCollectorCenterX, outputCenterY},
+                                                    {outputCollectorCenterX, slotCenterY - kCollectorTurnRadius});
+            }
+        }
     }
 
     collectorMinY = std::min(collectorMinY, portCenterY);
@@ -319,17 +366,29 @@ void CacheView::layoutBlock() {
                                                            sf::Vector2f{collectorCenterX, collectorMaxY},
                                                            railStyle));
     }
+
+    if (outputCenterY < outputCollectorMaxY - 0.5f) {
+        m_outputRailPaths.push_back(rails::RailBuilder::straight(
+            {outputCollectorCenterX, outputCenterY},
+            {outputCollectorCenterX, outputCollectorMaxY},
+            railStyle));
+    }
 }
 
 void CacheView::drawBlockContent(sf::RenderTarget& target, sf::RenderStates states) const {
     target.draw(m_inputPort, states);
-
     for (const rails::RailPath& path : m_railPaths) {
+        target.draw(path, states);
+    }
+    for (const rails::RailPath& path : m_outputRailPaths) {
         target.draw(path, states);
     }
 
     if (!m_highlightPath.isEmpty()) {
         target.draw(m_highlightPath, states);
+    }
+    if (!m_outputHighlightPath.isEmpty()) {
+        target.draw(m_outputHighlightPath, states);
     }
 
     for (std::size_t index = 0; index < m_slotViews.size(); ++index) {

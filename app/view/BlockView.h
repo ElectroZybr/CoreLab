@@ -66,6 +66,8 @@ class BlockView : public ViewNode {
     virtual void layoutBlock();
     void onPositionChanged() override;
     virtual void drawBlockContent(sf::RenderTarget& target, sf::RenderStates states) const = 0;
+    virtual void drawBlockOverlay(sf::RenderTarget& target, sf::RenderStates states) const {
+    }
 
     const sf::Color m_containerFillColor{36, 44, 60};
     const sf::Color m_containerOutlineColor{88, 112, 150};

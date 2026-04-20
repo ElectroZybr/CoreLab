@@ -195,5 +195,6 @@ void BlockView::draw(sf::RenderTarget& target, sf::RenderStates states) const {
 
     drawBlockContent(target, states);
     drawChildren(target, states);
+    drawBlockOverlay(target, states);
 }
 } // namespace view

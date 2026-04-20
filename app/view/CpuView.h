@@ -9,6 +9,7 @@
 #include "view/AluView.h"
 #include "view/BlockView.h"
 #include "view/CacheView.h"
+#include "view/rails/RailPath.h"
 
 namespace view {
 class CpuView : public BlockView {
@@ -23,10 +24,13 @@ class CpuView : public BlockView {
 
   private:
     void rebuildUnits();
+    void updateSizeFromContent();
     void layoutBlock() override;
     void drawBlockContent(sf::RenderTarget& target, sf::RenderStates states) const override;
+    void drawBlockOverlay(sf::RenderTarget& target, sf::RenderStates states) const override;
 
     std::unique_ptr<CacheView> m_cacheView;
     std::unique_ptr<AluView> m_aluView;
+    rails::RailPath m_cacheToAluPath;
 };
 } // namespace view

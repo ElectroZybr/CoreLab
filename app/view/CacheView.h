@@ -20,6 +20,9 @@ class CacheView : public BlockView {
     void setViewSize(sf::Vector2f size) {
         setBlockSize(size);
     }
+    [[nodiscard]] sf::Vector2f getViewSize() const {
+        return getBlockSize();
+    }
 
     [[nodiscard]] sf::Vector2f getLinePosition() const;
     [[nodiscard]] sf::Vector2f getLinePosition(std::size_t slotIndex) const;
@@ -58,9 +61,12 @@ class CacheView : public BlockView {
     bool m_selectedSlotValid = false;
 
     sf::ConvexShape m_inputPort;
+    sf::ConvexShape m_outputPort;
     std::vector<rails::RailPath> m_railPaths;
+    std::vector<rails::RailPath> m_outputRailPaths;
     std::vector<rails::RailPath> m_installPaths;
     rails::RailPath m_highlightPath;
+    rails::RailPath m_outputHighlightPath;
     std::optional<std::size_t> m_highlightedSlotIndex;
     std::vector<CacheLineView> m_slotViews;
     std::vector<sf::ConvexShape> m_slotOverlays;
