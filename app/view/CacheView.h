@@ -17,6 +17,9 @@ namespace view {
 class CacheView : public BlockView {
   public:
     explicit CacheView(const sf::Font* font = nullptr, sf::Vector2f position = {0.0f, 0.0f});
+    void setViewSize(sf::Vector2f size) {
+        setBlockSize(size);
+    }
 
     [[nodiscard]] sf::Vector2f getLinePosition() const;
     [[nodiscard]] sf::Vector2f getLinePosition(std::size_t slotIndex) const;

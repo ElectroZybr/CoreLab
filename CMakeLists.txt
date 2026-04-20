@@ -46,13 +46,13 @@ add_executable(CoreLab
     app/sim/MemoryTransaction.cpp
     app/sim/RAM.cpp
     app/sim/simulation.cpp
+    app/view/AluView.cpp
     app/view/BusView.cpp
     app/view/BlockView.cpp
     app/view/rails/ArcRailSegment.cpp
     app/view/rails/BezierRailSegment.cpp
     app/view/CacheLineView.cpp
     app/view/CacheView.cpp
-    app/view/CoreView.cpp
     app/view/CpuView.cpp
     app/view/PortView.cpp
     app/view/rails/RailBuilder.cpp

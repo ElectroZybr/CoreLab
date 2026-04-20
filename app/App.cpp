@@ -10,11 +10,20 @@ App::App() {
 }
 
 int App::run() {
+    machineController.setAnimationTiming({
+        .simulationTicksPerSecond = 60.0f,
+        .pixelsPerTick = 34.0f,
+        .minToRamPortTicks = 16,
+        .minBusTicks = 34,
+        .minInstallTicks = 22,
+    });
+
     machineController.clearScene();
-    machineController.createRam("ram0", 64 * 6, {0.0f, 0.0f});
+    machineController.createRam("ram0", 64 * 24, {0.0f, 0.0f});
     machineController.createCpu("cpu0", {-3400.0f, -700.0f});
     machineController.connect("ram0_to_cpu0_l1", "ram0", "mem_out", "cpu0.l1", "mem_in");
-    machineController.seedDemoStruct();
+    constexpr auto labelMode = MachineController::LabelMode::FieldNames;
+    machineController.writeStructArray("ram0", {"x", "y", "z", "vx", "vy", "vz"}, 16, labelMode);
     machineController.refreshVisualState();
     sf::Clock frameClock;
 

@@ -23,7 +23,57 @@
 
 class MachineController {
   public:
+    struct AnimationTiming {
+        float simulationTicksPerSecond = 60.0f;
+        float pixelsPerTick = 40.0f;
+        sim::Tick minToRamPortTicks = 14;
+        sim::Tick minBusTicks = 26;
+        sim::Tick minInstallTicks = 18;
+    };
+
+    enum class LabelMode {
+        FieldNames,
+        SequentialIndices,
+    };
+
+    struct StructLayout {
+        std::vector<std::string> fieldNames;
+    };
+
+    using StructValues = std::vector<float>;
+
+    class StructArray {
+      public:
+        StructArray() = default;
+        StructArray(StructLayout layout, std::size_t count);
+
+        [[nodiscard]] const StructLayout& getLayout() const {
+            return layout;
+        }
+        [[nodiscard]] const std::vector<StructValues>& getInstances() const {
+            return instances;
+        }
+        [[nodiscard]] std::size_t size() const {
+            return instances.size();
+        }
+
+        void set(std::size_t structIndex, std::size_t fieldIndex, float value);
+        void set(std::size_t structIndex, std::string_view fieldName, float value);
+
+      private:
+        [[nodiscard]] std::size_t findFieldIndex(std::string_view fieldName) const;
+
+        StructLayout layout;
+        std::vector<StructValues> instances;
+    };
+
     MachineController();
+    void setAnimationTiming(AnimationTiming timing) {
+        animationTiming = timing;
+    }
+    [[nodiscard]] const AnimationTiming& getAnimationTiming() const {
+        return animationTiming;
+    }
 
     view::RamView& createRam(const std::string& id, std::size_t sizeInBytes, sf::Vector2f position);
     view::CpuView& createCpu(const std::string& id, sf::Vector2f position);
@@ -36,9 +86,23 @@ class MachineController {
     const view::BlockView* findComponent(std::string_view id) const;
     view::BusView* findConnection(std::string_view id);
     const view::BusView* findConnection(std::string_view id) const;
+    static StructArray createStructArray(StructLayout layout, std::size_t count);
+    void writeStructArray(std::string_view ramId,
+                          std::initializer_list<std::string> fieldNames,
+                          std::size_t count,
+                          LabelMode labelMode = LabelMode::FieldNames,
+                          sim::Address startAddress = 0);
+    void writeStructArray(std::string_view ramId,
+                          const StructLayout& layout,
+                          const std::vector<StructValues>& instances,
+                          LabelMode labelMode = LabelMode::FieldNames,
+                          sim::Address startAddress = 0);
+    void writeStructArray(std::string_view ramId,
+                          const StructArray& array,
+                          LabelMode labelMode = LabelMode::FieldNames,
+                          sim::Address startAddress = 0);
 
     void clearScene();
-    void seedDemoStruct();
     void refreshVisualState();
     void cancelInteraction();
     [[nodiscard]] Controls::EventActions handleEvents(sf::RenderWindow& window);
@@ -85,17 +149,12 @@ class MachineController {
     [[nodiscard]] static sim::Tick ticksForDistance(float distance, float pixelsPerTick, sim::Tick minimumTicks);
     [[nodiscard]] static float computeLength(sf::Vector2f vector);
     [[nodiscard]] static float computeRamRouteLength(const view::RamView::ReadPath& readPath);
-    [[nodiscard]] static sim::MemoryTransactionDurations computeVisualLoadDurations(
+    [[nodiscard]] sim::MemoryTransactionDurations computeVisualLoadDurations(
         const view::RamView::ReadPath& readPath,
         const view::rails::RailPath& busPath,
         const view::rails::RailPath& installPath);
 
-    static constexpr float kSimulationTicksPerSecond = 60.0f;
     static constexpr float kRailThickness = 6.0f;
-    static constexpr float kPixelsPerTick = 55.0f;
-    static constexpr sim::Tick kMinToRamPortTicks = 10;
-    static constexpr sim::Tick kMinBusTicks = 18;
-    static constexpr sim::Tick kMinInstallTicks = 12;
     static constexpr float kInitialZoom = 0.5f;
     static constexpr sf::Vector2f kInitialCameraPosition{0.0f, 0.0f};
     static constexpr const char* kDemoRamId = "ram0";
@@ -108,6 +167,7 @@ class MachineController {
     Scene scene;
     sim::Simulation simulation;
     MemoryReadAnimation readAnimation;
+    AnimationTiming animationTiming{};
     std::unordered_map<std::string, std::unique_ptr<view::RamView>> ramViews;
     std::unordered_map<std::string, std::unique_ptr<view::CpuView>> cpuViews;
     std::unordered_map<std::string, view::BlockView*> componentViewsById;
@@ -117,5 +177,6 @@ class MachineController {
     bool previousLeftMousePressed = false;
     DragTarget dragTarget{};
     sf::Vector2f dragOffset{0.0f, 0.0f};
+    std::size_t nextReadLineIndex = 0;
     std::mt19937 rng;
 };

@@ -1,71 +1,56 @@
 #include "view/CpuView.h"
 
-#include "view/CoreView.h"
-
-#include <string>
-
 namespace {
-constexpr sf::Vector2f kSize{3000.0f, 1700.0f};
-constexpr sf::Vector2f kInitialCoreSize{1420.0f, 1450.0f};
-constexpr float kContentPadding = 34.0f;
-constexpr float kCoreGap = 28.0f;
-constexpr float kTopContentY = 150.0f;
+constexpr sf::Vector2f kSize{3400.0f, 1800.0f};
+constexpr float kContentPadding = 42.0f;
+constexpr float kTopContentY = 170.0f;
+constexpr float kContentGap = 26.0f;
 constexpr float kIoPortWidth = 52.0f;
 constexpr float kIoPortHeight = 28.0f;
 const sf::Color kTransparentPortColor(0, 0, 0, 0);
 } // namespace
 
 namespace view {
-CpuView::CpuView(const sf::Font* font, sf::Vector2f position) : BlockView(font, position, kSize) {
+CpuView::CpuView(const sf::Font* font, sf::Vector2f position)
+    : BlockView(font, position, kSize) {
     setHeaderLayout({88.0f, 20.0f, 106.0f, 82, 20});
     setTitle("CPU");
-    setSubtitle("2 cores  |  core 0 active, core 1 reserved");
+    setSubtitle("L1 cache + execution pipeline");
     addPort("cache_in", PortKind::Input, PortDirection::Right, PayloadKind::CacheLine);
-    rebuildCores();
+    rebuildUnits();
     layoutBlock();
 }
 
 void CpuView::syncPrimaryCache(const sim::Cache& cache,
                                const sim::RAM* ram,
                                const sim::MemoryTransaction* activeTransaction) {
-    if (CoreView* core = getPrimaryCore()) {
-        core->syncCache(cache, ram, activeTransaction);
+    if (m_cacheView) {
+        m_cacheView->sync(cache, ram, activeTransaction);
     }
 }
 
 CacheView* CpuView::getPrimaryCacheView() {
-    if (CoreView* core = getPrimaryCore()) {
-        return core->getCacheView();
-    }
-
-    return nullptr;
+    return m_cacheView.get();
 }
 
 const CacheView* CpuView::getPrimaryCacheView() const {
-    if (const CoreView* core = getPrimaryCore()) {
-        return core->getCacheView();
-    }
-
-    return nullptr;
+    return m_cacheView.get();
 }
 
-void CpuView::rebuildCores() {
-    if (!m_cores.empty()) {
-        return;
+void CpuView::rebuildUnits() {
+    if (!m_cacheView) {
+        m_cacheView = std::make_unique<CacheView>(getFont());
+        addChild(*m_cacheView);
     }
-
-    for (std::size_t index = 0; index < 2; ++index) {
-        const bool active = index == 0;
-        auto core = std::make_unique<CoreView>(
-            "Core " + std::to_string(index), active, getFont(), sf::Vector2f{}, kInitialCoreSize);
-        addChild(*core);
-        m_cores.push_back(std::move(core));
+    if (!m_aluView) {
+        m_aluView = std::make_unique<AluView>(getFont());
+        addChild(*m_aluView);
     }
 }
 
 void CpuView::layoutBlock() {
     BlockView::layoutBlock();
-    rebuildCores();
+    rebuildUnits();
 
     const sf::Vector2f size = getBlockSize();
 
@@ -75,20 +60,23 @@ void CpuView::layoutBlock() {
         cacheIn->setColors(kTransparentPortColor, kTransparentPortColor);
     }
 
-    if (m_cores.empty()) {
-        return;
+    const float contentWidth = size.x - kContentPadding * 2.0f;
+    const float contentHeight = size.y - kTopContentY - kContentPadding;
+    const float aluWidth = contentWidth * 0.42f;
+    const float cacheWidth = contentWidth - aluWidth - kContentGap;
+    const sf::Vector2f aluPosition{kContentPadding, kTopContentY};
+    const sf::Vector2f aluSize{aluWidth, contentHeight};
+    const sf::Vector2f cachePosition{kContentPadding + aluWidth + kContentGap, kTopContentY};
+    const sf::Vector2f cacheSize{cacheWidth, contentHeight};
+
+    if (m_aluView) {
+        m_aluView->setPosition(aluPosition);
+        m_aluView->setViewSize(aluSize);
     }
 
-    const float coreWidth = (size.x - kContentPadding * 2.0f - kCoreGap) * 0.5f;
-    const float coreHeight = size.y - kTopContentY - kContentPadding;
-
-    for (std::size_t index = 0; index < m_cores.size(); ++index) {
-        m_cores[index]->setCoreSize({coreWidth, coreHeight});
-        const sf::Vector2f corePosition{
-            kContentPadding + static_cast<float>(index) * (coreWidth + kCoreGap),
-            kTopContentY,
-        };
-        m_cores[index]->setPosition(corePosition);
+    if (m_cacheView) {
+        m_cacheView->setPosition(cachePosition);
+        m_cacheView->setViewSize(cacheSize);
     }
 }
 

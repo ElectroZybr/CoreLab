@@ -205,7 +205,7 @@ sf::Vector2f RamView::getLineHeadCenter(std::size_t index) const {
     }
 
     const sf::Vector2f topLeft = m_lines[index].getPosition();
-    return {topLeft.x + CacheLineView::kHeight * 0.5f, topLeft.y + CacheLineView::kHeight * 0.5f};
+    return {topLeft.x, topLeft.y + CacheLineView::kHeight * 0.5f};
 }
 
 sim::RAM::LineCellLabels RamView::getLineLabels(std::size_t index) const {
@@ -249,8 +249,7 @@ RamView::ReadPath RamView::getReadPath(std::size_t index) const {
     const std::size_t rows = math::ceilDiv(m_slotCount, columns);
     const std::size_t row = index / columns;
     const sf::Vector2f lineTopLeft = m_lines[index].getPosition();
-    const sf::Vector2f sourcePosition{lineTopLeft.x + CacheLineView::kHeight * 0.5f,
-                                      lineTopLeft.y + CacheLineView::kHeight * 0.5f};
+    const sf::Vector2f sourcePosition{lineTopLeft.x, lineTopLeft.y + CacheLineView::kHeight * 0.5f};
     const sf::Vector2f lanePosition{sourcePosition.x, computeLaneCenterY(getPosition(), row)};
     const float laneCenterY = lanePosition.y;
     const float busCenterX = getPosition().x + kCollectorCenterInsetX;

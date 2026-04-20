@@ -23,6 +23,8 @@ constexpr float kMinimumHeight = view::CacheLineView::kHeight + kSlotsOffsetY + 
 
 const sf::Color kInputPortFillColor(48, 58, 78);
 const sf::Color kInputPortOutlineColor(132, 154, 191);
+const sf::Color kHighlightedInputPortFillColor(247, 214, 92, 90);
+const sf::Color kHighlightedInputPortOutlineColor(247, 214, 92, 220);
 const sf::Color kTrackColor(116, 134, 165);
 const sf::Color kHighlightTrackColor(247, 214, 92, 210);
 const sf::Color kEmptyOverlayColor(12, 20, 34, 155);
@@ -212,6 +214,13 @@ void CacheView::layoutBlock() {
     const float portCenterX = collectorCenterX;
     m_inputPort.setPosition(
         {collectorCenterX - kInputPortWidth * 0.5f, portCenterY - kInputPortHeight * 0.5f});
+    if (m_highlightedSlotIndex.has_value()) {
+        m_inputPort.setFillColor(kHighlightedInputPortFillColor);
+        m_inputPort.setOutlineColor(kHighlightedInputPortOutlineColor);
+    } else {
+        m_inputPort.setFillColor(kInputPortFillColor);
+        m_inputPort.setOutlineColor(kInputPortOutlineColor);
+    }
 
     if (PortView* inputPort = findPort("mem_in")) {
         inputPort->setLocalAnchor({portCenterX - position.x, 0.0f});
