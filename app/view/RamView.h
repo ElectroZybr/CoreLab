@@ -45,6 +45,8 @@ class RamView : public BlockView {
     [[nodiscard]] sim::RAM::LineCellLabels getLineLabels(std::size_t index) const;
     void sync(const sim::RAM& ram);
     void setHighlightedLine(std::optional<std::size_t> lineIndex);
+    void setHighlightedCells(std::optional<std::size_t> lineIndex,
+                             const std::array<float, CacheLineView::kFloatCount>& intensities);
     [[nodiscard]] std::size_t getSizeInBytes() const {
         return m_sizeInBytes;
     }
@@ -63,6 +65,8 @@ class RamView : public BlockView {
     std::vector<rails::RailPath> m_railPaths;
     rails::RailPath m_highlightPath;
     std::optional<std::size_t> m_highlightedLineIndex;
+    std::optional<std::size_t> m_highlightedCellLineIndex;
+    std::array<float, CacheLineView::kFloatCount> m_highlightedCellIntensities{};
     std::vector<CacheLineView> m_lines;
 };
 } // namespace view

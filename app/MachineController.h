@@ -11,6 +11,7 @@
 #include <vector>
 
 #include "animation/MemoryReadAnimation.h"
+#include "animation/RegisterLoadAnimation.h"
 #include "core/Camera.h"
 #include "input/Controls.h"
 #include "scene/Scene.h"
@@ -121,6 +122,15 @@ class MachineController {
         bool highlighted = false;
     };
 
+    struct RegisterLoadState {
+        bool active = false;
+        sim::TransactionId sourceTransactionId = 0;
+        std::size_t sourceCacheSlotIndex = 0;
+        std::vector<std::string> labels;
+        std::vector<std::size_t> sourceCellIndices;
+        std::size_t currentLabelIndex = 0;
+    };
+
     void rebuildComponentRegistry();
     void refreshConnections();
     view::RamView* getDemoRam();
@@ -144,6 +154,9 @@ class MachineController {
 
     void syncIdleState();
     void syncActiveTransaction(const sim::MemoryTransaction& activeTransaction);
+    void syncRegisterLoadState();
+    void startRegisterLoad(const sim::MemoryTransaction& transaction);
+    void advanceRegisterLoad(float deltaSeconds);
     [[nodiscard]] const sim::MemoryTransaction* findActiveTransaction() const;
     [[nodiscard]] sim::Address chooseRandomAnimatedAddress();
     [[nodiscard]] static sim::Tick ticksForDistance(float distance, float pixelsPerTick, sim::Tick minimumTicks);
@@ -167,6 +180,7 @@ class MachineController {
     Scene scene;
     sim::Simulation simulation;
     MemoryReadAnimation readAnimation;
+    RegisterLoadAnimation registerLoadAnimation;
     AnimationTiming animationTiming{};
     std::unordered_map<std::string, std::unique_ptr<view::RamView>> ramViews;
     std::unordered_map<std::string, std::unique_ptr<view::CpuView>> cpuViews;
@@ -178,5 +192,9 @@ class MachineController {
     DragTarget dragTarget{};
     sf::Vector2f dragOffset{0.0f, 0.0f};
     std::size_t nextReadLineIndex = 0;
+    sim::TransactionId lastRegisterLoadTransactionId = 0;
+    std::size_t nextRegisterCellIndex = 0;
+    std::array<std::string, view::CacheLineView::kFloatCount> zmmLabels{};
+    RegisterLoadState registerLoadState{};
     std::mt19937 rng;
 };

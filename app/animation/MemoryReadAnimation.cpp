@@ -18,6 +18,8 @@ constexpr float kCapCornerRadiusScale = 0.18f;
 const sf::Color kTrainFillColor(200, 210, 223);
 const sf::Color kTrainOutlineColor(70, 97, 138);
 const sf::Color kTrainTextColor(27, 40, 67);
+const sf::Color kTrainHighlightTextColor(153, 117, 18);
+const sf::Color kTrainHighlightFillColor(247, 214, 92, 120);
 constexpr std::array<const char*, kFloatBlockCount> kBlockLabels{
     "x[0]",  "y[0]",  "z[0]",  "vx[0]", "vy[0]", "vz[0]",
     "x[1]",  "y[1]",  "z[1]",  "vx[1]", "vy[1]", "vz[1]",
@@ -200,6 +202,29 @@ void MemoryReadAnimation::setCellLabels(const sim::RAM::LineCellLabels& labels) 
 
         m_blockTexts[index].emplace(*m_font, labels[index], kBlockTextSize);
         m_blockTexts[index]->setFillColor(kTrainTextColor);
+    }
+}
+
+void MemoryReadAnimation::setHighlightedCells(const std::array<float, view::CacheLineView::kFloatCount>& intensities) {
+    m_highlightedCells = intensities;
+
+    for (std::size_t index = 0; index < m_blockTexts.size(); ++index) {
+        if (!m_blockTexts[index]) {
+            continue;
+        }
+
+        const float intensity = std::clamp(m_highlightedCells[index], 0.0f, 1.0f);
+        if (intensity > 0.0f) {
+            const auto mix = [intensity](std::uint8_t base, std::uint8_t highlight) {
+                return static_cast<std::uint8_t>(base + (highlight - base) * intensity);
+            };
+            m_blockTexts[index]->setFillColor(
+                sf::Color(mix(kTrainTextColor.r, kTrainHighlightTextColor.r),
+                          mix(kTrainTextColor.g, kTrainHighlightTextColor.g),
+                          mix(kTrainTextColor.b, kTrainHighlightTextColor.b)));
+        } else {
+            m_blockTexts[index]->setFillColor(kTrainTextColor);
+        }
     }
 }
 
@@ -469,6 +494,7 @@ void MemoryReadAnimation::rebuildRigidBody(sf::Vector2f headCenter) {
     m_bodyFill.clear();
     m_leftOutline.clear();
     m_rightOutline.clear();
+    m_cellHighlights.clear();
     m_dividers.clear();
     m_headCap.clear();
     m_tailCap.clear();
@@ -506,6 +532,30 @@ void MemoryReadAnimation::rebuildRigidBody(sf::Vector2f headCenter) {
     }
 
     const float blockStride = kTrainLength / static_cast<float>(kFloatBlockCount);
+    for (std::size_t index = 0; index < kFloatBlockCount; ++index) {
+        if (m_highlightedCells[index] <= 0.0f) {
+            continue;
+        }
+
+        const float startOffset = blockStride * static_cast<float>(index);
+        const float endOffset = blockStride * static_cast<float>(index + 1);
+        const float startHalfWidth = halfWidthAtOffset(startOffset);
+        const float endHalfWidth = halfWidthAtOffset(endOffset);
+        const sf::Vector2f startCenter = headCenter + trailingDirection * startOffset;
+        const sf::Vector2f endCenter = headCenter + trailingDirection * endOffset;
+        const sf::Vector2f startTop = startCenter + normal * startHalfWidth;
+        const sf::Vector2f startBottom = startCenter - normal * startHalfWidth;
+        const sf::Vector2f endTop = endCenter + normal * endHalfWidth;
+        const sf::Vector2f endBottom = endCenter - normal * endHalfWidth;
+
+        m_cellHighlights.append(sf::Vertex(startTop, kTrainHighlightFillColor));
+        m_cellHighlights.append(sf::Vertex(startBottom, kTrainHighlightFillColor));
+        m_cellHighlights.append(sf::Vertex(endTop, kTrainHighlightFillColor));
+        m_cellHighlights.append(sf::Vertex(endTop, kTrainHighlightFillColor));
+        m_cellHighlights.append(sf::Vertex(startBottom, kTrainHighlightFillColor));
+        m_cellHighlights.append(sf::Vertex(endBottom, kTrainHighlightFillColor));
+    }
+
     m_dividers.resize((kFloatBlockCount - 1) * 2);
     for (std::size_t index = 1; index < kFloatBlockCount; ++index) {
         const float offset = blockStride * static_cast<float>(index);
@@ -554,6 +604,7 @@ void MemoryReadAnimation::rebuildCurvedBody(float headDistance,
     m_bodyFill.clear();
     m_leftOutline.clear();
     m_rightOutline.clear();
+    m_cellHighlights.clear();
     m_dividers.clear();
     m_headCap.clear();
     m_tailCap.clear();
@@ -597,6 +648,38 @@ void MemoryReadAnimation::rebuildCurvedBody(float headDistance,
     }
 
     const float blockStride = kTrainLength / static_cast<float>(kFloatBlockCount);
+    for (std::size_t index = 0; index < kFloatBlockCount; ++index) {
+        if (m_highlightedCells[index] <= 0.0f) {
+            continue;
+        }
+
+        const float startOffset = blockStride * static_cast<float>(index);
+        const float endOffset = blockStride * static_cast<float>(index + 1);
+        const float startDistance = headDistance - startOffset;
+        const float endDistance = headDistance - endOffset;
+        const sf::Vector2f startCenter = sampleRouteCenterByDistance(startDistance, busPath, installPath);
+        const sf::Vector2f endCenter = sampleRouteCenterByDistance(endDistance, busPath, installPath);
+        const sf::Vector2f startTangent =
+            sampleRouteTangentByDistance(startDistance, totalDistance, busPath, installPath);
+        const sf::Vector2f endTangent =
+            sampleRouteTangentByDistance(endDistance, totalDistance, busPath, installPath);
+        const sf::Vector2f startNormal = normalFromTangent(startTangent);
+        const sf::Vector2f endNormal = normalFromTangent(endTangent);
+        const float startHalfWidth = halfWidthAtOffset(startOffset);
+        const float endHalfWidth = halfWidthAtOffset(endOffset);
+        const sf::Vector2f startTop = startCenter + startNormal * startHalfWidth;
+        const sf::Vector2f startBottom = startCenter - startNormal * startHalfWidth;
+        const sf::Vector2f endTop = endCenter + endNormal * endHalfWidth;
+        const sf::Vector2f endBottom = endCenter - endNormal * endHalfWidth;
+
+        m_cellHighlights.append(sf::Vertex(startTop, kTrainHighlightFillColor));
+        m_cellHighlights.append(sf::Vertex(startBottom, kTrainHighlightFillColor));
+        m_cellHighlights.append(sf::Vertex(endTop, kTrainHighlightFillColor));
+        m_cellHighlights.append(sf::Vertex(endTop, kTrainHighlightFillColor));
+        m_cellHighlights.append(sf::Vertex(startBottom, kTrainHighlightFillColor));
+        m_cellHighlights.append(sf::Vertex(endBottom, kTrainHighlightFillColor));
+    }
+
     m_dividers.resize((kFloatBlockCount - 1) * 2);
     for (std::size_t index = 1; index < kFloatBlockCount; ++index) {
         const float offset = blockStride * static_cast<float>(index);
@@ -661,6 +744,7 @@ void MemoryReadAnimation::draw(sf::RenderTarget& target, sf::RenderStates states
     }
 
     target.draw(m_bodyFill, states);
+    target.draw(m_cellHighlights, states);
     target.draw(m_dividers, states);
 
     for (const std::optional<sf::Text>& blockText : m_blockTexts) {

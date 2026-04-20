@@ -37,6 +37,7 @@ class MemoryReadAnimation : public sf::Drawable {
               const view::rails::RailPath* busPath = nullptr,
               const view::rails::RailPath* installPath = nullptr);
     void setCellLabels(const sim::RAM::LineCellLabels& labels);
+    void setHighlightedCells(const std::array<float, view::CacheLineView::kFloatCount>& intensities);
     void clear();
 
   private:
@@ -90,9 +91,11 @@ class MemoryReadAnimation : public sf::Drawable {
     sf::VertexArray m_leftOutline{sf::PrimitiveType::LineStrip};
     sf::VertexArray m_rightOutline{sf::PrimitiveType::LineStrip};
     sf::VertexArray m_dividers{sf::PrimitiveType::Lines};
+    sf::VertexArray m_cellHighlights{sf::PrimitiveType::Triangles};
     sf::VertexArray m_headCap{sf::PrimitiveType::TriangleFan};
     sf::VertexArray m_tailCap{sf::PrimitiveType::TriangleFan};
     sf::VertexArray m_headOutline{sf::PrimitiveType::LineStrip};
     sf::VertexArray m_tailOutline{sf::PrimitiveType::LineStrip};
+    std::array<float, view::CacheLineView::kFloatCount> m_highlightedCells{};
     std::array<std::optional<sf::Text>, view::CacheLineView::kFloatCount> m_blockTexts;
 };

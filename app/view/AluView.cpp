@@ -63,6 +63,18 @@ void AluView::layoutBlock() {
     }
 }
 
+void AluView::setRegisterLabels(const std::array<std::string, CacheLineView::kFloatCount>& labels) {
+    zmmRegister.setCellLabels(labels);
+}
+
+sf::Vector2f AluView::getRegisterCellCenter(std::size_t index) const {
+    const std::size_t clampedIndex = std::min(index, CacheLineView::kFloatCount - 1);
+    const float cellWidth = CacheLineView::kWidth / static_cast<float>(CacheLineView::kFloatCount);
+    const sf::Vector2f position = zmmRegister.getPosition();
+    return {position.x + cellWidth * (static_cast<float>(clampedIndex) + 0.5f),
+            position.y + CacheLineView::kHeight * 0.5f};
+}
+
 void AluView::drawBlockContent(sf::RenderTarget& target, sf::RenderStates states) const {
     if (registerLabel) {
         target.draw(*registerLabel, states);

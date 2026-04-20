@@ -29,6 +29,7 @@ class CacheView : public BlockView {
     [[nodiscard]] sf::Vector2f getEntryPosition() const;
     [[nodiscard]] sf::Vector2f getLineHeadCenter() const;
     [[nodiscard]] sf::Vector2f getLineHeadCenter(std::size_t slotIndex) const;
+    [[nodiscard]] sf::Vector2f getCellCenter(std::size_t slotIndex, std::size_t cellIndex) const;
     [[nodiscard]] sf::Vector2f getEntryCenter() const;
     [[nodiscard]] rails::RailDirection getEntryDirection() const {
         return rails::RailDirection::Down;
@@ -44,7 +45,18 @@ class CacheView : public BlockView {
 
         return m_installPaths[std::min(slotIndex, m_installPaths.size() - 1)];
     }
+    [[nodiscard]] const rails::RailPath& getOutputPath(std::size_t slotIndex) const {
+        if (m_outputSlotPaths.empty()) {
+            static const rails::RailPath kEmptyPath;
+            return kEmptyPath;
+        }
+
+        return m_outputSlotPaths[std::min(slotIndex, m_outputSlotPaths.size() - 1)];
+    }
     void setHighlightedSlot(std::optional<std::size_t> slotIndex);
+    void setReadHighlight(std::optional<std::size_t> slotIndex,
+                          std::optional<std::size_t> cellIndex,
+                          float intensity = 1.0f);
 
     void sync(const sim::Cache& cache,
               const sim::RAM* ram = nullptr,
@@ -64,10 +76,14 @@ class CacheView : public BlockView {
     sf::ConvexShape m_outputPort;
     std::vector<rails::RailPath> m_railPaths;
     std::vector<rails::RailPath> m_outputRailPaths;
+    std::vector<rails::RailPath> m_outputSlotPaths;
     std::vector<rails::RailPath> m_installPaths;
     rails::RailPath m_highlightPath;
     rails::RailPath m_outputHighlightPath;
     std::optional<std::size_t> m_highlightedSlotIndex;
+    std::optional<std::size_t> m_readHighlightSlotIndex;
+    std::optional<std::size_t> m_readHighlightCellIndex;
+    float m_readHighlightIntensity = 0.0f;
     std::vector<CacheLineView> m_slotViews;
     std::vector<sf::ConvexShape> m_slotOverlays;
 };

@@ -3,6 +3,8 @@
 #include <SFML/Graphics.hpp>
 
 #include <optional>
+#include <array>
+#include <string>
 
 #include "view/BlockView.h"
 #include "view/CacheLineView.h"
@@ -20,6 +22,8 @@ class AluView : public BlockView {
     [[nodiscard]] sf::Vector2f getViewSize() const {
         return getBlockSize();
     }
+    void setRegisterLabels(const std::array<std::string, CacheLineView::kFloatCount>& labels);
+    [[nodiscard]] sf::Vector2f getRegisterCellCenter(std::size_t index) const;
 
   private:
     void layoutBlock() override;

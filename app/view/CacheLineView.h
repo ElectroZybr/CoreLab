@@ -26,6 +26,8 @@ class CacheLineView : public sf::Drawable {
 
     void setFont(const sf::Font* font);
     void setCellLabels(const std::array<std::string, kFloatCount>& labels);
+    void setHighlightedCell(std::optional<std::size_t> cellIndex, float intensity = 1.0f);
+    void setHighlightedCells(const std::array<float, kFloatCount>& intensities);
 
   private:
     void rebuildText();
@@ -36,6 +38,8 @@ class CacheLineView : public sf::Drawable {
     sf::Vector2f m_position{0.0f, 0.0f};
     std::array<std::string, kFloatCount> m_labels;
     sf::ConvexShape m_container;
+    std::array<sf::RectangleShape, kFloatCount> m_cellHighlights;
+    std::array<float, kFloatCount> m_highlightIntensities{};
     std::array<sf::RectangleShape, kFloatCount - 1> m_dividers;
     std::array<std::optional<sf::Text>, kFloatCount> m_cellTexts;
 };

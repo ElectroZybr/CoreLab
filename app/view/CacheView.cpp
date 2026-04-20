@@ -70,6 +70,15 @@ void CacheView::setHighlightedSlot(std::optional<std::size_t> slotIndex) {
     layoutBlock();
 }
 
+void CacheView::setReadHighlight(std::optional<std::size_t> slotIndex,
+                                 std::optional<std::size_t> cellIndex,
+                                 float intensity) {
+    m_readHighlightSlotIndex = slotIndex;
+    m_readHighlightCellIndex = cellIndex;
+    m_readHighlightIntensity = std::clamp(intensity, 0.0f, 1.0f);
+    layoutBlock();
+}
+
 sf::Vector2f CacheView::getLinePosition() const {
     if (m_slotViews.empty()) {
         return getWorldPosition();
@@ -109,6 +118,18 @@ sf::Vector2f CacheView::getLineHeadCenter(std::size_t slotIndex) const {
 
     const sf::Vector2f topLeft = m_slotViews[std::min(slotIndex, m_slotViews.size() - 1)].getPosition();
     return {topLeft.x, topLeft.y + CacheLineView::kHeight * 0.5f};
+}
+
+sf::Vector2f CacheView::getCellCenter(std::size_t slotIndex, std::size_t cellIndex) const {
+    if (m_slotViews.empty()) {
+        return getWorldPosition();
+    }
+
+    const sf::Vector2f topLeft = m_slotViews[std::min(slotIndex, m_slotViews.size() - 1)].getPosition();
+    const std::size_t clampedCellIndex = std::min(cellIndex, CacheLineView::kFloatCount - 1);
+    const float cellWidth = CacheLineView::kWidth / static_cast<float>(CacheLineView::kFloatCount);
+    return {topLeft.x + cellWidth * (static_cast<float>(clampedCellIndex) + 0.5f),
+            topLeft.y + CacheLineView::kHeight * 0.5f};
 }
 
 sf::Vector2f CacheView::getEntryCenter() const {
@@ -208,6 +229,7 @@ void CacheView::layoutBlock() {
     const sf::Vector2f size = getBlockSize();
     m_railPaths.clear();
     m_outputRailPaths.clear();
+    m_outputSlotPaths.clear();
     m_installPaths.clear();
     m_highlightPath = rails::RailPath({kTrackThickness + 1.0f, kHighlightTrackColor});
     m_outputHighlightPath = rails::RailPath({kTrackThickness + 1.0f, kHighlightTrackColor});
@@ -221,6 +243,11 @@ void CacheView::layoutBlock() {
         const float slotY =
             position.y + kSlotsOffsetY + static_cast<float>(index) * (CacheLineView::kHeight + kSlotGapY);
         m_slotViews[index].setPosition({slotX, slotY});
+        if (m_readHighlightSlotIndex && *m_readHighlightSlotIndex == index && m_readHighlightCellIndex) {
+            m_slotViews[index].setHighlightedCell(*m_readHighlightCellIndex, m_readHighlightIntensity);
+        } else {
+            m_slotViews[index].setHighlightedCell(std::nullopt);
+        }
         m_slotOverlays[index].setPosition({slotX, slotY});
     }
 
@@ -255,6 +282,7 @@ void CacheView::layoutBlock() {
     }
 
     m_installPaths.reserve(m_slotViews.size());
+    m_outputSlotPaths.reserve(m_slotViews.size());
     float outputCollectorMaxY = outputCenterY;
     m_outputPort.setPosition(
         {outputCollectorCenterX - kInputPortWidth * 0.5f, outputCenterY - kInputPortHeight * 0.5f});
@@ -331,6 +359,19 @@ void CacheView::layoutBlock() {
         if (m_highlightedSlotIndex && *m_highlightedSlotIndex == index) {
             m_highlightPath = std::move(highlightInstallPath);
         }
+
+        rails::RailPath outputPath(railStyle);
+        outputPath.appendStraight({lineExitCenterX, slotCenterY},
+                                  {outputCollectorCenterX + kCollectorTurnRadius, slotCenterY});
+        outputPath.appendArc({outputCollectorCenterX + kCollectorTurnRadius, slotCenterY - kCollectorTurnRadius},
+                             kCollectorTurnRadius,
+                             std::numbers::pi_v<float> * 0.5f,
+                             std::numbers::pi_v<float>);
+        if (outputCenterY < slotCenterY - kCollectorTurnRadius - 0.5f) {
+            outputPath.appendStraight({outputCollectorCenterX, slotCenterY - kCollectorTurnRadius},
+                                      {outputCollectorCenterX, outputCenterY});
+        }
+        m_outputSlotPaths.push_back(std::move(outputPath));
 
         m_outputRailPaths.push_back(
             rails::RailBuilder::straight({lineExitCenterX, slotCenterY},

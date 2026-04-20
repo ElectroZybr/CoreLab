@@ -46,6 +46,20 @@ const CacheView* CpuView::getPrimaryCacheView() const {
     return m_cacheView.get();
 }
 
+void CpuView::setRegisterLabels(const std::array<std::string, CacheLineView::kFloatCount>& labels) {
+    if (m_aluView) {
+        m_aluView->setRegisterLabels(labels);
+    }
+}
+
+sf::Vector2f CpuView::getRegisterCellCenter(std::size_t index) const {
+    if (!m_aluView) {
+        return getWorldPosition();
+    }
+
+    return m_aluView->getRegisterCellCenter(index);
+}
+
 void CpuView::rebuildUnits() {
     if (!m_cacheView) {
         m_cacheView = std::make_unique<CacheView>(getFont());

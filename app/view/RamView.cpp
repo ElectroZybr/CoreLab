@@ -191,6 +191,13 @@ void RamView::setHighlightedLine(std::optional<std::size_t> lineIndex) {
     layoutBlock();
 }
 
+void RamView::setHighlightedCells(std::optional<std::size_t> lineIndex,
+                                  const std::array<float, CacheLineView::kFloatCount>& intensities) {
+    m_highlightedCellLineIndex = lineIndex;
+    m_highlightedCellIntensities = intensities;
+    layoutBlock();
+}
+
 sf::Vector2f RamView::getLinePosition(std::size_t index) const {
     if (index >= m_lines.size()) {
         return getPosition();
@@ -518,6 +525,13 @@ void RamView::layoutBlock() {
         const float laneCenterY = laneTopY + kSlotSize.y * 0.5f;
 
         m_lines[index].setPosition({x, y});
+        if (m_highlightedCellLineIndex && *m_highlightedCellLineIndex == index) {
+            m_lines[index].setHighlightedCells(m_highlightedCellIntensities);
+        } else {
+            std::array<float, CacheLineView::kFloatCount> empty{};
+            empty.fill(0.0f);
+            m_lines[index].setHighlightedCells(empty);
+        }
 
         m_railPaths.push_back(
             rails::RailBuilder::straight(sf::Vector2f{x + kSlotSize.x * 0.5f, y + kSlotSize.y},

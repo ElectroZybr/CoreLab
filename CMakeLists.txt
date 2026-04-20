@@ -39,6 +39,7 @@ add_executable(CoreLab
     app/App.cpp
     app/MachineController.cpp
     app/animation/MemoryReadAnimation.cpp
+    app/animation/RegisterLoadAnimation.cpp
     app/core/Camera.cpp
     app/input/Controls.cpp
     app/scene/Scene.cpp

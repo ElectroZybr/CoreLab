@@ -1,5 +1,6 @@
 #include "view/CacheLineView.h"
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <numbers>
@@ -9,6 +10,7 @@ constexpr float kCornerRadius = 16.0f;
 constexpr int kCornerPointCount = 16;
 constexpr float kDividerWidth = 2.0f;
 constexpr unsigned int kCellTextSize = 16;
+const sf::Color kHighlightColor(247, 214, 92);
 
 constexpr std::array<const char*, view::CacheLineView::kFloatCount> kDefaultLabels{
     "x[0]",  "y[0]",  "z[0]",  "vx[0]", "vy[0]", "vz[0]",
@@ -57,6 +59,10 @@ CacheLineView::CacheLineView(const sf::Font* font, sf::Vector2f position)
         divider.setFillColor(sf::Color(70, 97, 138));
     }
 
+    for (sf::RectangleShape& highlight : m_cellHighlights) {
+        highlight.setFillColor(sf::Color::Transparent);
+    }
+
     rebuildText();
     layout();
 }
@@ -75,6 +81,19 @@ void CacheLineView::setFont(const sf::Font* font) {
 void CacheLineView::setCellLabels(const std::array<std::string, kFloatCount>& labels) {
     m_labels = labels;
     rebuildText();
+    layout();
+}
+
+void CacheLineView::setHighlightedCell(std::optional<std::size_t> cellIndex, float intensity) {
+    m_highlightIntensities.fill(0.0f);
+    if (cellIndex.has_value()) {
+        m_highlightIntensities[*cellIndex] = std::clamp(intensity, 0.0f, 1.0f);
+    }
+    layout();
+}
+
+void CacheLineView::setHighlightedCells(const std::array<float, kFloatCount>& intensities) {
+    m_highlightIntensities = intensities;
     layout();
 }
 
@@ -101,6 +120,17 @@ void CacheLineView::layout() {
     m_container.setPosition(m_position);
 
     const float floatWidth = kWidth / static_cast<float>(kFloatCount);
+    for (std::size_t index = 0; index < m_cellHighlights.size(); ++index) {
+        const float inset = 3.0f;
+        const float cellX = m_position.x + static_cast<float>(index) * floatWidth;
+        m_cellHighlights[index].setPosition({cellX + inset, m_position.y + inset});
+        m_cellHighlights[index].setSize({floatWidth - inset * 2.0f, kHeight - inset * 2.0f});
+        const float intensity = std::clamp(m_highlightIntensities[index], 0.0f, 1.0f);
+        m_cellHighlights[index].setFillColor(
+            sf::Color(kHighlightColor.r, kHighlightColor.g, kHighlightColor.b,
+                      static_cast<std::uint8_t>(intensity > 0.0f ? 40.0f + 120.0f * intensity : 0.0f)));
+    }
+
     for (std::size_t index = 0; index < m_dividers.size(); ++index) {
         const float x = m_position.x + static_cast<float>(index + 1) * floatWidth - kDividerWidth * 0.5f;
         m_dividers[index].setPosition({x, m_position.y});
@@ -121,6 +151,11 @@ void CacheLineView::layout() {
 
 void CacheLineView::draw(sf::RenderTarget& target, sf::RenderStates states) const {
     target.draw(m_container, states);
+    for (std::size_t index = 0; index < m_cellHighlights.size(); ++index) {
+        if (m_highlightIntensities[index] > 0.0f) {
+            target.draw(m_cellHighlights[index], states);
+        }
+    }
 
     for (const sf::RectangleShape& divider : m_dividers) {
         target.draw(divider, states);

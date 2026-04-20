@@ -1,5 +1,6 @@
 #include "MachineController.h"
 
+#include <algorithm>
 #include <cmath>
 #include <stdexcept>
 #include <string>
@@ -10,6 +11,42 @@ const sf::Color kBackgroundColor(8, 10, 18);
 
 sim::Address toBlockAddress(std::size_t blockIndex) {
     return static_cast<sim::Address>(blockIndex) * sim::RAM::kCacheLineSizeInBytes;
+}
+
+void appendSampledPath(view::rails::RailPath& destination,
+                       const view::rails::RailPath& source,
+                       float step = 12.0f) {
+    if (source.isEmpty()) {
+        return;
+    }
+
+    const float length = source.getLength();
+    sf::Vector2f previousPoint = source.getStartPoint();
+    for (float distance = step; distance < length; distance += step) {
+        const sf::Vector2f point = source.samplePoint(distance);
+        destination.appendStraight(previousPoint, point);
+        previousPoint = point;
+    }
+    destination.appendStraight(previousPoint, source.getEndPoint());
+}
+
+view::rails::RailPath buildRegisterLoadPath(const view::CacheView& cacheView,
+                                            std::size_t slotIndex,
+                                            std::size_t cellIndex,
+                                            const view::rails::RailPath& cacheToAluPath,
+                                            float thickness) {
+    view::rails::RailPath path({thickness, sf::Color(247, 214, 92, 210)});
+    const sf::Vector2f cellCenter = cacheView.getCellCenter(slotIndex, cellIndex);
+    const view::rails::RailPath& outputPath = cacheView.getOutputPath(slotIndex);
+    if (!outputPath.isEmpty()) {
+        const sf::Vector2f outputStart = outputPath.getStartPoint();
+        if (cellCenter.x > outputStart.x + 0.5f) {
+            path.appendStraight(cellCenter, {outputStart.x, cellCenter.y});
+        }
+        appendSampledPath(path, outputPath);
+    }
+    appendSampledPath(path, cacheToAluPath);
+    return path;
 }
 } // namespace
 
@@ -49,8 +86,10 @@ MachineController::MachineController()
       scene(),
       simulation(64 * 6),
       readAnimation(scene.getFont()),
+      registerLoadAnimation(scene.getFont()),
       rng(std::random_device{}()) {
     camera.reset(kInitialCameraPosition, kInitialZoom);
+    zmmLabels.fill("");
 }
 
 view::RamView& MachineController::createRam(const std::string& id,
@@ -269,7 +308,18 @@ void MachineController::update(sf::RenderWindow& window, float deltaSeconds) {
     }
 
     const sim::MemoryTransaction* activeTransaction = findActiveTransaction();
-    if (!activeTransaction) {
+    if (!activeTransaction && !registerLoadState.active) {
+        const auto& transactions = simulation.getTransactions();
+        if (!transactions.empty()) {
+            const sim::MemoryTransaction& latestTransaction = transactions.back();
+            if (latestTransaction.isCompleted(simulation.getCurrentTick()) &&
+                latestTransaction.getId() != lastRegisterLoadTransactionId) {
+                startRegisterLoad(latestTransaction);
+            }
+        }
+    }
+
+    if (!activeTransaction && !registerLoadState.active) {
         const sim::Address address = chooseRandomAnimatedAddress();
         const std::size_t lineIndex = static_cast<std::size_t>(address / sim::RAM::kCacheLineSizeInBytes);
         const std::size_t targetCacheSlotIndex = simulation.getCache().getTargetSlotIndex(address);
@@ -294,6 +344,9 @@ void MachineController::update(sf::RenderWindow& window, float deltaSeconds) {
 
     if (activeTransaction) {
         syncActiveTransaction(*activeTransaction);
+    } else if (registerLoadState.active) {
+        advanceRegisterLoad(deltaSeconds);
+        syncRegisterLoadState();
     } else {
         syncIdleState();
     }
@@ -314,6 +367,7 @@ void MachineController::render(sf::RenderWindow& window) const {
         }
     }
     window.draw(readAnimation);
+    window.draw(registerLoadAnimation);
 }
 
 void MachineController::onWindowModeChanged(const sf::RenderWindow& window) {
@@ -331,7 +385,12 @@ void MachineController::clearScene() {
     cpuViews.clear();
     connections.clear();
     readAnimation.clear();
+    registerLoadAnimation.clear();
     nextReadLineIndex = 0;
+    lastRegisterLoadTransactionId = 0;
+    nextRegisterCellIndex = 0;
+    zmmLabels.fill("");
+    registerLoadState = {};
 }
 
 void MachineController::rebuildComponentRegistry() {
@@ -442,14 +501,19 @@ void MachineController::syncIdleState() {
     if (view::RamView* demoRam = getDemoRam()) {
         demoRam->sync(simulation.getRam());
         demoRam->setHighlightedLine(std::nullopt);
+        std::array<float, view::CacheLineView::kFloatCount> emptyHighlights{};
+        emptyHighlights.fill(0.0f);
+        demoRam->setHighlightedCells(std::nullopt, emptyHighlights);
     }
 
     if (view::CpuView* demoCpu = getDemoCpu()) {
         demoCpu->syncPrimaryCache(simulation.getCache(), &simulation.getRam());
+        demoCpu->setRegisterLabels(zmmLabels);
     }
 
     if (view::CacheView* demoPrimaryCache = getDemoPrimaryCache()) {
         demoPrimaryCache->setHighlightedSlot(std::nullopt);
+        demoPrimaryCache->setReadHighlight(std::nullopt, std::nullopt, 0.0f);
     }
 
     if (Connection* demoConnection = getDemoConnection()) {
@@ -458,6 +522,10 @@ void MachineController::syncIdleState() {
     }
 
     readAnimation.clear();
+    std::array<float, view::CacheLineView::kFloatCount> emptyReadHighlights{};
+    emptyReadHighlights.fill(0.0f);
+    readAnimation.setHighlightedCells(emptyReadHighlights);
+    registerLoadAnimation.clear();
 }
 
 void MachineController::syncActiveTransaction(const sim::MemoryTransaction& activeTransaction) {
@@ -480,11 +548,25 @@ void MachineController::syncActiveTransaction(const sim::MemoryTransaction& acti
     }
 
     demoRam->setHighlightedLine(lineIndex);
+    std::array<float, view::CacheLineView::kFloatCount> xHighlights{};
+    xHighlights.fill(0.0f);
+    const sim::RAM::LineCellLabels lineLabels = simulation.getRam().getLineCellLabels(lineIndex);
+    for (std::size_t index = 0; index < lineLabels.size(); ++index) {
+        if (lineLabels[index].rfind("x[", 0) == 0) {
+            xHighlights[index] = 1.0f;
+        }
+    }
+    std::array<float, view::CacheLineView::kFloatCount> emptyRamHighlights{};
+    emptyRamHighlights.fill(0.0f);
+    demoRam->setHighlightedCells(std::nullopt, emptyRamHighlights);
     demoPrimaryCache->setHighlightedSlot(activeTransaction.getTargetCacheSlotIndex());
+    demoPrimaryCache->setReadHighlight(std::nullopt, std::nullopt, 0.0f);
     demoConnection->highlighted = true;
     demoConnection->bus.setHighlighted(true);
+    demoCpu->setRegisterLabels(zmmLabels);
 
     readAnimation.setCellLabels(simulation.getRam().getLineCellLabels(lineIndex));
+    readAnimation.setHighlightedCells(xHighlights);
     readAnimation.setRoute(readPath.sourcePosition,
                            readPath.lanePosition,
                            readPath.turnEntryPosition,
@@ -505,6 +587,116 @@ void MachineController::syncActiveTransaction(const sim::MemoryTransaction& acti
                        simulation.getCurrentTick(),
                        demoConnection->bus.isVisible() ? &demoConnection->bus.getPath() : nullptr,
                        &demoPrimaryCache->getInstallPath());
+    registerLoadAnimation.clear();
+}
+
+void MachineController::syncRegisterLoadState() {
+    view::RamView* demoRam = getDemoRam();
+    view::CpuView* demoCpu = getDemoCpu();
+    view::CacheView* demoPrimaryCache = getDemoPrimaryCache();
+    Connection* demoConnection = getDemoConnection();
+    if (!demoRam || !demoCpu || !demoPrimaryCache || !demoConnection) {
+        return;
+    }
+
+    demoRam->sync(simulation.getRam());
+    demoRam->setHighlightedLine(std::nullopt);
+    demoCpu->syncPrimaryCache(simulation.getCache(), &simulation.getRam());
+    demoCpu->setRegisterLabels(zmmLabels);
+    demoPrimaryCache->setHighlightedSlot(registerLoadState.sourceCacheSlotIndex);
+    if (registerLoadState.currentLabelIndex < registerLoadState.sourceCellIndices.size()) {
+        demoPrimaryCache->setReadHighlight(registerLoadState.sourceCacheSlotIndex,
+                                           registerLoadState.sourceCellIndices[registerLoadState.currentLabelIndex],
+                                           std::max(0.25f, registerLoadAnimation.getHighlightProgress()));
+    } else {
+        demoPrimaryCache->setReadHighlight(std::nullopt, std::nullopt, 0.0f);
+    }
+    demoConnection->highlighted = false;
+    demoConnection->bus.setHighlighted(false);
+    readAnimation.clear();
+}
+
+void MachineController::startRegisterLoad(const sim::MemoryTransaction& transaction) {
+    registerLoadState = {};
+    registerLoadState.active = true;
+    registerLoadState.sourceTransactionId = transaction.getId();
+    registerLoadState.sourceCacheSlotIndex = transaction.getTargetCacheSlotIndex();
+
+    const std::size_t lineIndex =
+        static_cast<std::size_t>(transaction.getLineBaseAddress() / sim::RAM::kCacheLineSizeInBytes);
+    const sim::RAM::LineCellLabels labels = simulation.getRam().getLineCellLabels(lineIndex);
+    for (std::size_t index = 0; index < labels.size(); ++index) {
+        const std::string& label = labels[index];
+        if (label.rfind("x[", 0) == 0) {
+            registerLoadState.labels.push_back(label);
+            registerLoadState.sourceCellIndices.push_back(index);
+        }
+    }
+
+    if (registerLoadState.labels.empty()) {
+        registerLoadState.active = false;
+        lastRegisterLoadTransactionId = transaction.getId();
+        return;
+    }
+
+    if (view::CpuView* demoCpu = getDemoCpu()) {
+        if (view::CacheView* demoPrimaryCache = getDemoPrimaryCache()) {
+            registerLoadAnimation.start(
+                buildRegisterLoadPath(*demoPrimaryCache,
+                                      registerLoadState.sourceCacheSlotIndex,
+                                      registerLoadState.sourceCellIndices.front(),
+                                      demoCpu->getCacheToAluPath(),
+                                      kRailThickness + 1.0f),
+                registerLoadState.labels.front(),
+                demoCpu->getRegisterCellCenter(nextRegisterCellIndex));
+            if (!registerLoadAnimation.isActive()) {
+                lastRegisterLoadTransactionId = transaction.getId();
+                registerLoadState = {};
+            }
+        }
+    }
+}
+
+void MachineController::advanceRegisterLoad(float deltaSeconds) {
+    if (!registerLoadState.active) {
+        return;
+    }
+
+    const float pixelsPerSecond =
+        animationTiming.simulationTicksPerSecond * animationTiming.pixelsPerTick * 0.55f;
+    if (!registerLoadAnimation.update(deltaSeconds, pixelsPerSecond)) {
+        return;
+    }
+
+    if (registerLoadState.currentLabelIndex < registerLoadState.labels.size()) {
+        zmmLabels[nextRegisterCellIndex] = registerLoadState.labels[registerLoadState.currentLabelIndex];
+        nextRegisterCellIndex = (nextRegisterCellIndex + 1) % view::CacheLineView::kFloatCount;
+        registerLoadState.currentLabelIndex += 1;
+    }
+
+    if (registerLoadState.currentLabelIndex >= registerLoadState.labels.size()) {
+        lastRegisterLoadTransactionId = registerLoadState.sourceTransactionId;
+        registerLoadState = {};
+        registerLoadAnimation.clear();
+        return;
+    }
+
+    if (view::CpuView* demoCpu = getDemoCpu()) {
+        if (view::CacheView* demoPrimaryCache = getDemoPrimaryCache()) {
+            registerLoadAnimation.start(
+                buildRegisterLoadPath(*demoPrimaryCache,
+                                      registerLoadState.sourceCacheSlotIndex,
+                                      registerLoadState.sourceCellIndices[registerLoadState.currentLabelIndex],
+                                      demoCpu->getCacheToAluPath(),
+                                      kRailThickness + 1.0f),
+                registerLoadState.labels[registerLoadState.currentLabelIndex],
+                demoCpu->getRegisterCellCenter(nextRegisterCellIndex));
+            if (!registerLoadAnimation.isActive()) {
+                lastRegisterLoadTransactionId = registerLoadState.sourceTransactionId;
+                registerLoadState = {};
+            }
+        }
+    }
 }
 
 void MachineController::cancelInteraction() {

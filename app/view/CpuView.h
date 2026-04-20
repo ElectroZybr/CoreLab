@@ -3,6 +3,8 @@
 #include <SFML/Graphics.hpp>
 
 #include <memory>
+#include <array>
+#include <string>
 
 #include "sim/Cache.h"
 #include "sim/MemoryTransaction.h"
@@ -21,6 +23,11 @@ class CpuView : public BlockView {
                           const sim::MemoryTransaction* activeTransaction = nullptr);
     [[nodiscard]] CacheView* getPrimaryCacheView();
     [[nodiscard]] const CacheView* getPrimaryCacheView() const;
+    void setRegisterLabels(const std::array<std::string, CacheLineView::kFloatCount>& labels);
+    [[nodiscard]] sf::Vector2f getRegisterCellCenter(std::size_t index) const;
+    [[nodiscard]] const rails::RailPath& getCacheToAluPath() const {
+        return m_cacheToAluPath;
+    }
 
   private:
     void rebuildUnits();
